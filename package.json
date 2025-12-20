@@ -1,0 +1,14 @@
+{
+  "name": "ai-gateway",
+  "version": "2.1.0",
+  "description": "AI Gateway Gutenberg sidebar powered by Ollama + MCP.",
+  "author": "Eion",
+  "license": "GPL-2.0-or-later",
+  "scripts": {
+    "build": "wp-scripts build",
+    "start": "wp-scripts start"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^27.9.0"
+  }
+}
