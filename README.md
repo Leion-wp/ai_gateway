@@ -1,34 +1,47 @@
 # AI Gateway
 
-AI Gateway is a local-first WordPress plugin that connects Gutenberg to Ollama (and optional MCP backends) with AI agents, native editor tools, and REST endpoints.
+AI Gateway is a local-first WordPress plugin that connects Gutenberg to Ollama (and optional MCP backends). It lets you run AI agents inside the editor, apply native tools, and keep full control on your own infrastructure.
 
-## Highlights
-- Custom AI agents with models, prompts, inputs, and MCP endpoints
-- Gutenberg sidebar with AI assistant + native tools
-- Tool permissions per agent (enable only what each agent can do)
-- REST API for agents, runs, media import, and plugin activation
+## Why it is useful
+- Run AI agents directly in Gutenberg (no external SaaS required)
+- Control which tools each agent can use
+- Edit content, layout, and structure from a single sidebar
+- Extend with MCP tools or your own endpoints
 
-## Requirements
-- WordPress 6.x
-- PHP 8.0+
-- Node.js (for building assets)
+## Quick demo (30 seconds)
+1. Open a post in Gutenberg and open the AI Gateway sidebar
+2. Select an agent and click Generate
+3. Insert the result or use native tools (Smart Edit, Outline, Template)
 
-## Install
+## Screenshots
+- `docs/screenshots/sidebar.png`
+- `docs/screenshots/tools.png`
+- `docs/screenshots/agents.png`
+
+## Security and privacy
+- Local-first by design (Ollama runs on your own host)
+- No content is sent to third-party APIs by default
+- Admin-only actions for plugin activation and tools
+
+## Core features
+- Custom AI agents (model, system prompt, inputs, MCP endpoint)
+- Gutenberg sidebar with AI assistant and native tools
+- Tool permissions per agent (checkboxes)
+- REST API for agents, runs, media import, and plugin actions
+- Admin pages for agents, settings, and plugins
+
+## Quick start
 1. Upload the plugin folder to `wp-content/plugins/ai-gateway`
-2. Activate from WordPress Admin
-3. Build assets if you change `src/index.js`:
-   ```bash
-   npm install
-   npm run build
-   ```
+2. Activate it in WordPress Admin
+3. Open a post in Gutenberg and use the AI Gateway sidebar
 
-## Build
+If you change `src/index.js`:
 ```bash
 npm install
 npm run build
 ```
 
-## Tools (Gutenberg)
+## Tools available in Gutenberg
 - Smart Edit (target block text + colors)
 - Outline to Sections
 - Page Template
@@ -38,7 +51,20 @@ npm run build
 - Media Smart Insert
 - Hero Section
 
-## REST endpoints
+## Agents
+Create agents from the admin panel with:
+- Model name (Ollama)
+- System prompt
+- Input schema (JSON -> form fields)
+- Output mode (`text` or `blocks`)
+- Allowed tools (checkboxes)
+
+## Plugin control (admin)
+AI Gateway provides a Plugins IA page and REST endpoints to:
+- list installed plugins
+- activate/deactivate plugins (admin only)
+
+## REST API
 Base: `/wp-json/ai/v1`
 - `GET /ping`
 - `POST /run`

@@ -4,3 +4,5 @@ ai-gateway-dist/
 .env
 .DS_Store
 Thumbs.db
+*.pdf
+VISION.md
