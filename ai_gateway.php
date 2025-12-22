@@ -35,6 +35,7 @@ require_once __DIR__ . '/rest/handlers-publish.php';
 require_once __DIR__ . '/rest/handlers-agents.php';
 require_once __DIR__ . '/rest/handlers-media.php';
 require_once __DIR__ . '/rest/handlers-plugins.php';
+require_once __DIR__ . '/rest/handlers-ollama.php';
 require_once __DIR__ . '/rest/routes.php';
 
 new AIGateway_Updater(

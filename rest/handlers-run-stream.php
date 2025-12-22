@@ -88,6 +88,7 @@ function ai_gateway_handle_run_stream($request) {
     });
 
     $result = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     if ($result === false) {
         $error = curl_error($ch);
         echo 'data: ' . wp_json_encode(['error' => $error]) . "\n\n";
@@ -125,6 +126,16 @@ function ai_gateway_handle_run_stream($request) {
             }
             $mcp_meta = 'MCP: ' . $agent['mcp_endpoint'];
         }
+    }
+
+    if ($http_code === 404) {
+        echo 'data: ' . wp_json_encode([
+            'error' => 'model_not_found',
+            'model' => $agent['model'],
+            'suggest_pull' => true,
+        ]) . "\n\n";
+        flush();
+        exit;
     }
 
     if (!$done && $full_text === '') {

@@ -108,4 +108,12 @@ add_action('rest_api_init', function() {
             return current_user_can('activate_plugins');
         },
     ]);
+
+    register_rest_route('ai/v1', '/ollama/pull/stream', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_pull_model_stream',
+        'permission_callback' => function() {
+            return current_user_can('manage_options');
+        },
+    ]);
 });

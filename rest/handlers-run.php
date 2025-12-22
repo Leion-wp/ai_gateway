@@ -48,7 +48,15 @@ function ai_gateway_handle_run($request) {
         return ['error' => $ollama_response->get_error_message()];
     }
 
-    $ollama_body = json_decode(wp_remote_retrieve_body($ollama_response), true);
+    $raw_body = wp_remote_retrieve_body($ollama_response);
+    $ollama_body = json_decode($raw_body, true);
+    if (ai_gateway_is_model_not_found($ollama_response, $ollama_body ?: $raw_body)) {
+        return [
+            'error' => 'model_not_found',
+            'model' => $agent['model'],
+            'suggest_pull' => true,
+        ];
+    }
     if (is_array($ollama_body) && isset($ollama_body['response'])) {
         $ollama_response_text = $ollama_body['response'];
     }

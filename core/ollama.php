@@ -95,3 +95,20 @@ function ai_gateway_get_ollama_options($agent = null) {
 
     return $options;
 }
+
+function ai_gateway_is_model_not_found($response, $body) {
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code === 404) {
+        return true;
+    }
+
+    if (is_array($body) && isset($body['error'])) {
+        return stripos($body['error'], 'not found') !== false;
+    }
+
+    if (is_string($body)) {
+        return stripos($body, 'not found') !== false;
+    }
+
+    return false;
+}

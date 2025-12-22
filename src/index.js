@@ -92,6 +92,9 @@ function AIGatewaySidebar() {
     const [isBusy, setIsBusy] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [missingModel, setMissingModel] = useState('');
+    const [isPullingModel, setIsPullingModel] = useState(false);
+    const [pullStatus, setPullStatus] = useState('');
 
     const blocks = useSelect((store) => store('core/block-editor').getBlocks(), []);
     const selectedClientId = useSelect(
@@ -232,6 +235,11 @@ function AIGatewaySidebar() {
         });
 
         if (data?.error) {
+            if (data.error === 'model_not_found') {
+                setMissingModel(data.model || '');
+                setError('Model not found.');
+                return;
+            }
             setError(data.error);
             setOutput('');
         } else {
@@ -299,6 +307,11 @@ function AIGatewaySidebar() {
                         try {
                             const data = JSON.parse(payload);
                             if (data.error) {
+                                if (data.error === 'model_not_found') {
+                                    setMissingModel(data.model || '');
+                                    setError('Model not found.');
+                                    return;
+                                }
                                 setError(data.error);
                                 return;
                             }
@@ -324,6 +337,76 @@ function AIGatewaySidebar() {
             await runAgentFallback();
         } finally {
             setIsBusy(false);
+        }
+    };
+
+    const pullModel = async () => {
+        if (!missingModel) {
+            return;
+        }
+        setIsPullingModel(true);
+        setPullStatus(__('Downloading model...', 'ai-gateway'));
+        try {
+            const response = await fetch('/wp-json/ai/v1/ollama/pull/stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': settings.nonce || '',
+                },
+                body: JSON.stringify({ model: missingModel }),
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+                throw new Error('Pull stream unavailable');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+
+                parts.forEach((part) => {
+                    const lines = part.split('\n');
+                    lines.forEach((line) => {
+                        if (!line.startsWith('data: ')) {
+                            return;
+                        }
+                        const payload = line.slice(6).trim();
+                        if (!payload) {
+                            return;
+                        }
+                        try {
+                            const data = JSON.parse(payload);
+                            if (data.error) {
+                                setPullStatus(data.error);
+                                return;
+                            }
+                            if (data.status) {
+                                setPullStatus(data.status);
+                            }
+                            if (data.completed && data.total) {
+                                const pct = Math.round((data.completed / data.total) * 100);
+                                setPullStatus(`${data.status || 'Downloading'} (${pct}%)`);
+                            }
+                        } catch (err) {
+                            setPullStatus(err.message || 'Pull parse error.');
+                        }
+                    });
+                });
+            }
+        } catch (err) {
+            setPullStatus(err.message || 'Pull failed.');
+        } finally {
+            setIsPullingModel(false);
         }
     };
 
@@ -573,6 +656,20 @@ function AIGatewaySidebar() {
                 {error && (
                     <Notice status="error" isDismissible={false}>
                         {error}
+                        {missingModel && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div>{missingModel}</div>
+                                <Button
+                                    variant="secondary"
+                                    onClick={pullModel}
+                                    isBusy={isPullingModel}
+                                    style={{ marginTop: '6px' }}
+                                >
+                                    {__('Download model', 'ai-gateway')}
+                                </Button>
+                                {pullStatus && <div style={{ marginTop: '6px' }}>{pullStatus}</div>}
+                            </div>
+                        )}
                     </Notice>
                 )}
 
