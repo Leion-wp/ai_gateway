@@ -39,6 +39,7 @@ function ai_gateway_register_post_type() {
     ]);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'mcp_endpoint', $meta_args);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'output_mode', $meta_args);
+    register_post_meta(AI_GATEWAY_POST_TYPE, 'ollama_preset', $meta_args);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'tools', [
         'type' => 'string',
         'single' => true,
@@ -123,6 +124,7 @@ function ai_gateway_format_agent($post) {
         'input_schema' => $decoded_fields,
         'mcp_endpoint' => get_post_meta($post->ID, 'mcp_endpoint', true),
         'output_mode' => get_post_meta($post->ID, 'output_mode', true) ?: 'text',
+        'ollama_preset' => get_post_meta($post->ID, 'ollama_preset', true),
         'tools' => $tools,
         'enabled' => get_post_meta($post->ID, 'enabled', true) === '1',
     ];
@@ -155,6 +157,10 @@ function ai_gateway_update_agent_meta($agent_id, $params) {
     if (isset($params['input_schema'])) {
         $schema = is_array($params['input_schema']) ? $params['input_schema'] : [];
         update_post_meta($agent_id, 'input_fields', wp_json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+
+    if (isset($params['ollama_preset'])) {
+        update_post_meta($agent_id, 'ollama_preset', sanitize_text_field($params['ollama_preset']));
     }
 
     if (isset($params['tools'])) {
