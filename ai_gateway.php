@@ -17,6 +17,7 @@ require_once __DIR__ . '/core/constants.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/core/ollama.php';
 require_once __DIR__ . '/core/agents.php';
+require_once __DIR__ . '/core/updater.php';
 
 require_once __DIR__ . '/editor/sidebar.php';
 require_once __DIR__ . '/editor/enqueue.php';
@@ -34,3 +35,10 @@ require_once __DIR__ . '/rest/handlers-agents.php';
 require_once __DIR__ . '/rest/handlers-media.php';
 require_once __DIR__ . '/rest/handlers-plugins.php';
 require_once __DIR__ . '/rest/routes.php';
+
+new AIGateway_Updater(
+    AI_GATEWAY_PLUGIN_FILE,
+    AI_GATEWAY_VERSION,
+    'Leion-wp',
+    'ai_gateway'
+);
