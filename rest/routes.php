@@ -10,6 +10,7 @@ add_action('rest_api_init', function() {
         'callback' => function() {
             return ['status' => 'ok'];
         },
+        'permission_callback' => '_return_true',
     ]);
 
     register_rest_route('ai/v1', '/run', [
