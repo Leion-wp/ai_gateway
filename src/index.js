@@ -134,7 +134,27 @@ function AIGatewaySidebar() {
         [blocks, targetBlockId]
     );
 
-    const inputSchema = agent?.input_schema || [];
+    const rawSchema = agent?.input_schema || [];
+    const inputSchema = rawSchema
+        .map((field) => {
+            if (typeof field === 'string') {
+                return { key: field, label: field, type: 'text' };
+            }
+            if (!field || !field.key) {
+                return null;
+            }
+            return {
+                key: field.key,
+                label: field.label || field.key,
+                type: field.type || 'text',
+                options: field.options || [],
+                placeholder: field.placeholder || '',
+                required: Boolean(field.required),
+                env: field.env || '',
+            };
+        })
+        .filter(Boolean);
+    const visibleSchema = inputSchema.filter((field) => !field.env);
     const outputMode = agent?.output_mode || 'text';
     const agentTools = agent?.tools || [
         'smart_edit',
@@ -151,8 +171,8 @@ function AIGatewaySidebar() {
 
     const resetInputs = () => {
         const defaults = {};
-        inputSchema.forEach((field) => {
-            defaults[field] = '';
+        visibleSchema.forEach((field) => {
+            defaults[field.key] = '';
         });
         setInputs(defaults);
     };
@@ -694,14 +714,46 @@ function AIGatewaySidebar() {
                     ))}
                 </div>
 
-                {inputSchema.map((field) => (
-                    <TextControl
-                        key={field}
-                        label={field}
-                        value={inputs[field] || ''}
-                        onChange={(value) => handleInputChange(field, value)}
-                    />
-                ))}
+                {visibleSchema.map((field) => {
+                    if (field.type === 'textarea') {
+                        return (
+                            <TextareaControl
+                                key={field.key}
+                                label={field.label}
+                                value={inputs[field.key] || ''}
+                                onChange={(value) => handleInputChange(field.key, value)}
+                                help={field.placeholder}
+                            />
+                        );
+                    }
+                    if (field.type === 'select') {
+                        const options = Array.isArray(field.options)
+                            ? field.options
+                            : String(field.options || '')
+                                .split(',')
+                                .map((opt) => opt.trim())
+                                .filter(Boolean);
+                        return (
+                            <SelectControl
+                                key={field.key}
+                                label={field.label}
+                                value={inputs[field.key] || ''}
+                                options={options.map((opt) => ({ label: opt, value: opt }))}
+                                onChange={(value) => handleInputChange(field.key, value)}
+                            />
+                        );
+                    }
+                    return (
+                        <TextControl
+                            key={field.key}
+                            label={field.label}
+                            value={inputs[field.key] || ''}
+                            onChange={(value) => handleInputChange(field.key, value)}
+                            type={field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : field.type === 'password' ? 'password' : 'text'}
+                            help={field.placeholder}
+                        />
+                    );
+                })}
 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                     <Button variant="primary" isBusy={isBusy} onClick={runAgent}>

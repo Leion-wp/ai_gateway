@@ -15,6 +15,8 @@ function ai_gateway_handle_run_stream($request) {
         return new WP_Error('not_found', 'Agent introuvable.', ['status' => 404]);
     }
 
+    $inputs = ai_gateway_apply_schema_env_values($agent['input_schema'] ?? [], $inputs);
+
     $prompt_parts = [];
     if (!empty($agent['system_prompt'])) {
         $prompt_parts[] = $agent['system_prompt'];
@@ -40,6 +42,56 @@ function ai_gateway_handle_run_stream($request) {
         @ob_end_flush();
     }
     flush();
+
+    $provider_result = ai_gateway_call_provider($agent, $instruction, $inputs);
+    if (isset($provider_result['error']) && $provider_result['error'] !== 'use_ollama_handler') {
+        echo 'data: ' . wp_json_encode(['error' => $provider_result['error']]) . "\n\n";
+        flush();
+        exit;
+    }
+    if (isset($provider_result['text'])) {
+        $mcp_response_text = '';
+        $mcp_meta = '';
+        if (!empty($agent['mcp_endpoint'])) {
+            $mcp_payload = [
+                'agent_id' => $agent['id'],
+                'instruction' => $instruction,
+                'inputs' => $inputs,
+                'ollama_response' => $provider_result['text'],
+            ];
+
+            $mcp_response = wp_remote_post(esc_url_raw($agent['mcp_endpoint']), [
+                'timeout' => 20,
+                'headers' => ['Content-Type' => 'application/json'],
+                'body' => wp_json_encode($mcp_payload),
+            ]);
+
+            if (!is_wp_error($mcp_response)) {
+                $mcp_body = wp_remote_retrieve_body($mcp_response);
+                $decoded = json_decode($mcp_body, true);
+                if (is_array($decoded)) {
+                    if (isset($decoded['result'])) {
+                        $mcp_response_text = $decoded['result'];
+                    } else {
+                        $mcp_response_text = wp_json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                    }
+                } else {
+                    $mcp_response_text = $mcp_body;
+                }
+                $mcp_meta = 'MCP: ' . $agent['mcp_endpoint'];
+            }
+        }
+
+        echo 'data: ' . wp_json_encode([
+            'done' => true,
+            'full' => $provider_result['text'],
+            'mcp_response' => $mcp_response_text,
+            'mcp_meta' => $mcp_meta,
+            'output_mode' => $agent['output_mode'],
+        ]) . "\n\n";
+        flush();
+        exit;
+    }
 
     $ollama_url = ai_gateway_get_ollama_url();
     $ollama_payload = [

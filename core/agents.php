@@ -40,6 +40,8 @@ function ai_gateway_register_post_type() {
     register_post_meta(AI_GATEWAY_POST_TYPE, 'mcp_endpoint', $meta_args);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'output_mode', $meta_args);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'ollama_preset', $meta_args);
+    register_post_meta(AI_GATEWAY_POST_TYPE, 'provider', $meta_args);
+    register_post_meta(AI_GATEWAY_POST_TYPE, 'provider_source', $meta_args);
     register_post_meta(AI_GATEWAY_POST_TYPE, 'tools', [
         'type' => 'string',
         'single' => true,
@@ -116,6 +118,8 @@ function ai_gateway_format_agent($post) {
         $tools = array_keys(ai_gateway_get_tool_definitions());
     }
 
+    $decoded_fields = ai_gateway_normalize_input_schema($decoded_fields);
+
     return [
         'id' => $post->ID,
         'name' => $post->post_title,
@@ -125,6 +129,8 @@ function ai_gateway_format_agent($post) {
         'mcp_endpoint' => get_post_meta($post->ID, 'mcp_endpoint', true),
         'output_mode' => get_post_meta($post->ID, 'output_mode', true) ?: 'text',
         'ollama_preset' => get_post_meta($post->ID, 'ollama_preset', true),
+        'provider' => get_post_meta($post->ID, 'provider', true),
+        'provider_source' => get_post_meta($post->ID, 'provider_source', true),
         'tools' => $tools,
         'enabled' => get_post_meta($post->ID, 'enabled', true) === '1',
     ];
@@ -161,6 +167,14 @@ function ai_gateway_update_agent_meta($agent_id, $params) {
 
     if (isset($params['ollama_preset'])) {
         update_post_meta($agent_id, 'ollama_preset', sanitize_text_field($params['ollama_preset']));
+    }
+
+    if (isset($params['provider'])) {
+        update_post_meta($agent_id, 'provider', sanitize_text_field($params['provider']));
+    }
+
+    if (isset($params['provider_source'])) {
+        update_post_meta($agent_id, 'provider_source', sanitize_text_field($params['provider_source']));
     }
 
     if (isset($params['tools'])) {

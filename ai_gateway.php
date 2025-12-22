@@ -16,6 +16,7 @@ define('AI_GATEWAY_PLUGIN_FILE', __FILE__);
 require_once __DIR__ . '/core/constants.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/core/ollama.php';
+require_once __DIR__ . '/core/providers.php';
 require_once __DIR__ . '/core/agents.php';
 require_once __DIR__ . '/core/updater.php';
 

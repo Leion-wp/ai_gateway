@@ -15,6 +15,8 @@ function ai_gateway_handle_run($request) {
         return ['error' => 'Agent introuvable.'];
     }
 
+    $inputs = ai_gateway_apply_schema_env_values($agent['input_schema'] ?? [], $inputs);
+
     $prompt_parts = [];
     if (!empty($agent['system_prompt'])) {
         $prompt_parts[] = $agent['system_prompt'];
@@ -27,38 +29,46 @@ function ai_gateway_handle_run($request) {
     $prompt = implode("\n\n", $prompt_parts);
 
     $ollama_response_text = '';
-    $ollama_url = ai_gateway_get_ollama_url();
-    $ollama_payload = [
-        'model' => $agent['model'] ?: 'mistral',
-        'prompt' => $prompt,
-        'stream' => false,
-    ];
-    $options = ai_gateway_get_ollama_options($agent);
-    if (!empty($options)) {
-        $ollama_payload['options'] = $options;
+    $provider_result = ai_gateway_call_provider($agent, $instruction, $inputs);
+    if (isset($provider_result['error']) && $provider_result['error'] !== 'use_ollama_handler') {
+        return ['error' => $provider_result['error']];
     }
-
-    $ollama_response = wp_remote_post($ollama_url, [
-        'timeout' => 15,
-        'headers' => ['Content-Type' => 'application/json'],
-        'body' => wp_json_encode($ollama_payload),
-    ]);
-
-    if (is_wp_error($ollama_response)) {
-        return ['error' => $ollama_response->get_error_message()];
-    }
-
-    $raw_body = wp_remote_retrieve_body($ollama_response);
-    $ollama_body = json_decode($raw_body, true);
-    if (ai_gateway_is_model_not_found($ollama_response, $ollama_body ?: $raw_body)) {
-        return [
-            'error' => 'model_not_found',
-            'model' => $agent['model'],
-            'suggest_pull' => true,
+    if (isset($provider_result['text'])) {
+        $ollama_response_text = $provider_result['text'];
+    } else {
+        $ollama_url = ai_gateway_get_ollama_url();
+        $ollama_payload = [
+            'model' => $agent['model'] ?: 'mistral',
+            'prompt' => $prompt,
+            'stream' => false,
         ];
-    }
-    if (is_array($ollama_body) && isset($ollama_body['response'])) {
-        $ollama_response_text = $ollama_body['response'];
+        $options = ai_gateway_get_ollama_options($agent);
+        if (!empty($options)) {
+            $ollama_payload['options'] = $options;
+        }
+
+        $ollama_response = wp_remote_post($ollama_url, [
+            'timeout' => 15,
+            'headers' => ['Content-Type' => 'application/json'],
+            'body' => wp_json_encode($ollama_payload),
+        ]);
+
+        if (is_wp_error($ollama_response)) {
+            return ['error' => $ollama_response->get_error_message()];
+        }
+
+        $raw_body = wp_remote_retrieve_body($ollama_response);
+        $ollama_body = json_decode($raw_body, true);
+        if (ai_gateway_is_model_not_found($ollama_response, $ollama_body ?: $raw_body)) {
+            return [
+                'error' => 'model_not_found',
+                'model' => $agent['model'],
+                'suggest_pull' => true,
+            ];
+        }
+        if (is_array($ollama_body) && isset($ollama_body['response'])) {
+            $ollama_response_text = $ollama_body['response'];
+        }
     }
 
     $mcp_response_text = '';

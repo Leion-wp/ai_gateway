@@ -18,6 +18,8 @@ function ai_gateway_save_settings() {
 
     $ollama_url = isset($_POST['ollama_url']) ? esc_url_raw(wp_unslash($_POST['ollama_url'])) : '';
     $preset = isset($_POST['ollama_preset']) ? sanitize_text_field(wp_unslash($_POST['ollama_preset'])) : 'balanced';
+    $provider_default = isset($_POST['provider_default']) ? sanitize_text_field(wp_unslash($_POST['provider_default'])) : 'ollama';
+    $provider_source_default = isset($_POST['provider_source_default']) ? sanitize_text_field(wp_unslash($_POST['provider_source_default'])) : 'openrouter';
 
     $int_fields = [
         'ai_gateway_ollama_num_predict' => 'ollama_num_predict',
@@ -41,6 +43,18 @@ function ai_gateway_save_settings() {
         $preset = 'balanced';
     }
     update_option('ai_gateway_ollama_preset', $preset);
+
+    $providers = ai_gateway_get_provider_list();
+    if (!isset($providers[$provider_default])) {
+        $provider_default = 'ollama';
+    }
+    update_option('ai_gateway_provider_default', $provider_default);
+
+    $sources = ai_gateway_get_openai_compat_sources();
+    if (!isset($sources[$provider_source_default])) {
+        $provider_source_default = 'openrouter';
+    }
+    update_option('ai_gateway_openai_compat_source', $provider_source_default);
 
     foreach ($int_fields as $option => $field) {
         $raw = isset($_POST[$field]) ? wp_unslash($_POST[$field]) : '';
@@ -152,14 +166,57 @@ function ai_gateway_save_agent() {
     $model = isset($_POST['agent_model']) ? sanitize_text_field(wp_unslash($_POST['agent_model'])) : '';
     $system_prompt = isset($_POST['agent_system_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['agent_system_prompt'])) : '';
     $input_schema_raw = isset($_POST['agent_input_schema']) ? wp_unslash($_POST['agent_input_schema']) : '';
+    $fields_input = isset($_POST['agent_fields']) && is_array($_POST['agent_fields'])
+        ? (array) wp_unslash($_POST['agent_fields'])
+        : [];
     $mcp_endpoint = isset($_POST['agent_mcp_endpoint']) ? esc_url_raw(wp_unslash($_POST['agent_mcp_endpoint'])) : '';
     $output_mode = isset($_POST['agent_output_mode']) ? sanitize_text_field(wp_unslash($_POST['agent_output_mode'])) : 'text';
     $ollama_preset = isset($_POST['agent_ollama_preset']) ? sanitize_text_field(wp_unslash($_POST['agent_ollama_preset'])) : '';
+    $provider = isset($_POST['agent_provider']) ? sanitize_text_field(wp_unslash($_POST['agent_provider'])) : '';
+    $provider_source = isset($_POST['agent_provider_source']) ? sanitize_text_field(wp_unslash($_POST['agent_provider_source'])) : '';
     $tools = isset($_POST['agent_tools']) ? array_map('sanitize_text_field', (array) wp_unslash($_POST['agent_tools'])) : [];
     $enabled = isset($_POST['agent_enabled']) ? '1' : '0';
 
     $input_schema = [];
-    if ($input_schema_raw) {
+    if (!empty($fields_input)) {
+        foreach ($fields_input as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $key = isset($field['key']) ? sanitize_key($field['key']) : '';
+            $label = isset($field['label']) ? sanitize_text_field($field['label']) : '';
+            $type = isset($field['type']) ? sanitize_text_field($field['type']) : 'text';
+            if (!in_array($type, ['text', 'textarea', 'number', 'url', 'select', 'password'], true)) {
+                $type = 'text';
+            }
+            $placeholder = isset($field['placeholder']) ? sanitize_text_field($field['placeholder']) : '';
+            $required = !empty($field['required']);
+            $env = isset($field['env']) ? sanitize_text_field($field['env']) : '';
+            $options_raw = isset($field['options']) ? (string) $field['options'] : '';
+            $options = [];
+            if ($options_raw !== '') {
+                $parts = preg_split('/[,\n]/', $options_raw);
+                foreach ($parts as $part) {
+                    $part = trim($part);
+                    if ($part !== '') {
+                        $options[] = $part;
+                    }
+                }
+            }
+            if ($key === '') {
+                continue;
+            }
+            $input_schema[] = [
+                'key' => $key,
+                'label' => $label ?: $key,
+                'type' => $type,
+                'required' => $required,
+                'placeholder' => $placeholder,
+                'options' => $options,
+                'env' => $env,
+            ];
+        }
+    } elseif ($input_schema_raw) {
         $decoded = json_decode($input_schema_raw, true);
         if (is_array($decoded)) {
             $input_schema = $decoded;
@@ -189,6 +246,8 @@ function ai_gateway_save_agent() {
     update_post_meta($agent_id, 'mcp_endpoint', $mcp_endpoint);
     update_post_meta($agent_id, 'output_mode', $output_mode);
     update_post_meta($agent_id, 'ollama_preset', $ollama_preset);
+    update_post_meta($agent_id, 'provider', $provider);
+    update_post_meta($agent_id, 'provider_source', $provider_source);
     update_post_meta($agent_id, 'tools', wp_json_encode($tools, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     update_post_meta($agent_id, 'enabled', $enabled);
 
