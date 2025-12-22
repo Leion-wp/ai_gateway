@@ -20,6 +20,14 @@ add_action('rest_api_init', function() {
         },
     ]);
 
+    register_rest_route('ai/v1', '/run/stream', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_handle_run_stream',
+        'permission_callback' => function() {
+            return current_user_can('edit_posts');
+        },
+    ]);
+
     register_rest_route('ai/v1', '/publish', [
         'methods' => 'POST',
         'callback' => 'ai_gateway_handle_publish',

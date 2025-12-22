@@ -30,6 +30,7 @@ require_once __DIR__ . '/admin/pages-plugins.php';
 require_once __DIR__ . '/admin/actions-plugins.php';
 
 require_once __DIR__ . '/rest/handlers-run.php';
+require_once __DIR__ . '/rest/handlers-run-stream.php';
 require_once __DIR__ . '/rest/handlers-publish.php';
 require_once __DIR__ . '/rest/handlers-agents.php';
 require_once __DIR__ . '/rest/handlers-media.php';

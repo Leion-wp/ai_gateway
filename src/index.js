@@ -220,6 +220,26 @@ function AIGatewaySidebar() {
         }
     };
 
+    const runAgentFallback = async () => {
+        const data = await apiFetch({
+            path: '/ai/v1/run',
+            method: 'POST',
+            data: {
+                agent_id: agentId,
+                instruction,
+                inputs,
+            },
+        });
+
+        if (data?.error) {
+            setError(data.error);
+            setOutput('');
+        } else {
+            setOutput(data?.mcp_response || data?.ollama_response || '');
+            setMeta(data?.mcp_meta || '');
+        }
+    };
+
     const runAgent = async () => {
         if (!agentId) {
             setError('No agent selected.');
@@ -232,26 +252,76 @@ function AIGatewaySidebar() {
         setOutput(__('Running...', 'ai-gateway'));
 
         try {
-            const data = await apiFetch({
-                path: '/ai/v1/run',
+            const response = await fetch('/wp-json/ai/v1/run/stream', {
                 method: 'POST',
-                data: {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': settings.nonce || '',
+                },
+                body: JSON.stringify({
                     agent_id: agentId,
                     instruction,
                     inputs,
-                },
+                }),
             });
 
-            if (data?.error) {
-                setError(data.error);
-                setOutput('');
-            } else {
-                setOutput(data?.mcp_response || data?.ollama_response || '');
-                setMeta(data?.mcp_meta || '');
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+                throw new Error('Stream unavailable');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            setOutput('');
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+
+                parts.forEach((part) => {
+                    const lines = part.split('\n');
+                    lines.forEach((line) => {
+                        if (!line.startsWith('data: ')) {
+                            return;
+                        }
+                        const payload = line.slice(6).trim();
+                        if (!payload) {
+                            return;
+                        }
+                        try {
+                            const data = JSON.parse(payload);
+                            if (data.error) {
+                                setError(data.error);
+                                return;
+                            }
+                            if (data.delta) {
+                                setOutput((prev) => prev + data.delta);
+                            }
+                            if (data.mcp_meta) {
+                                setMeta(data.mcp_meta);
+                            }
+                            if (data.done && data.full) {
+                                setOutput(data.full);
+                                if (data.mcp_response) {
+                                    setMeta(data.mcp_meta || '');
+                                }
+                            }
+                        } catch (err) {
+                            setError(err.message || 'Stream parse error.');
+                        }
+                    });
+                });
             }
         } catch (err) {
-            setError(err.message || 'Unknown error.');
-            setOutput('');
+            await runAgentFallback();
         } finally {
             setIsBusy(false);
         }
