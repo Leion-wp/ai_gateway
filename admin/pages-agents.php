@@ -21,12 +21,16 @@ function ai_gateway_render_agents_page() {
         $mcp_endpoint = $agent['mcp_endpoint'] ?? '';
         $output_mode = $agent['output_mode'] ?? 'text';
         $ollama_preset = $agent['ollama_preset'] ?? '';
+        $provider = $agent['provider'] ?? '';
+        $provider_source = $agent['provider_source'] ?? '';
         $enabled = $agent['enabled'] ?? true;
         $tools = $agent['tools'] ?? array_keys(ai_gateway_get_tool_definitions());
-        $input_json = wp_json_encode($input_schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         $presets = ai_gateway_get_ollama_presets();
         $global_preset = ai_gateway_get_ollama_preset();
         $global_label = isset($presets[$global_preset]['label']) ? $presets[$global_preset]['label'] : $global_preset;
+        $providers = ai_gateway_get_provider_list();
+        $provider_sources = ai_gateway_get_openai_compat_sources();
+        $input_schema = ai_gateway_normalize_input_schema($input_schema);
         ?>
         <div class="wrap">
             <h1><?php echo $action === 'new' ? 'Ajouter un agent' : 'Modifier un agent'; ?></h1>
@@ -44,12 +48,85 @@ function ai_gateway_render_agents_page() {
                         <td><input name="agent_model" id="agent_model" type="text" class="regular-text" value="<?php echo esc_attr($model); ?>" /></td>
                     </tr>
                     <tr>
+                        <th scope="row"><label for="agent_provider">Provider</label></th>
+                        <td>
+                            <select name="agent_provider" id="agent_provider">
+                                <option value=""><?php echo esc_html('Global'); ?></option>
+                                <?php foreach ($providers as $provider_id => $label): ?>
+                                    <option value="<?php echo esc_attr($provider_id); ?>" <?php selected($provider, $provider_id); ?>>
+                                        <?php echo esc_html($label); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="agent_provider_source">OpenAI-compatible source</label></th>
+                        <td>
+                            <select name="agent_provider_source" id="agent_provider_source">
+                                <option value=""><?php echo esc_html('Global'); ?></option>
+                                <?php foreach ($provider_sources as $source_id => $source_data): ?>
+                                    <option value="<?php echo esc_attr($source_id); ?>" <?php selected($provider_source, $source_id); ?>>
+                                        <?php echo esc_html($source_data['label'] ?? $source_id); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">Utilise seulement si le provider est OpenAI-compatible.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="agent_system_prompt">System prompt</label></th>
                         <td><textarea name="agent_system_prompt" id="agent_system_prompt" rows="6" class="large-text code"><?php echo esc_textarea($system_prompt); ?></textarea></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="agent_input_schema">Input fields (JSON)</label></th>
-                        <td><textarea name="agent_input_schema" id="agent_input_schema" rows="6" class="large-text code"><?php echo esc_textarea($input_json); ?></textarea></td>
+                        <th scope="row">Input fields</th>
+                        <td>
+                            <table class="widefat fixed striped" id="ai-gateway-input-fields">
+                                <thead>
+                                    <tr>
+                                        <th>Label</th>
+                                        <th>Key</th>
+                                        <th>Type</th>
+                                        <th>Options</th>
+                                        <th>Placeholder</th>
+                                        <th>Required</th>
+                                        <th>Env</th>
+                                        <th>Supprimer</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($input_schema)): ?>
+                                        <?php $input_schema = [['key' => '', 'label' => '', 'type' => 'text', 'options' => [], 'placeholder' => '', 'required' => false, 'env' => '']]; ?>
+                                    <?php endif; ?>
+                                    <?php foreach ($input_schema as $index => $field): ?>
+                                        <?php
+                                            $options = isset($field['options']) && is_array($field['options']) ? implode(', ', $field['options']) : '';
+                                            $type = $field['type'] ?? 'text';
+                                        ?>
+                                        <tr>
+                                            <td><input type="text" name="agent_fields[<?php echo esc_attr($index); ?>][label]" value="<?php echo esc_attr($field['label'] ?? ''); ?>" /></td>
+                                            <td><input type="text" name="agent_fields[<?php echo esc_attr($index); ?>][key]" value="<?php echo esc_attr($field['key'] ?? ''); ?>" /></td>
+                                            <td>
+                                                <select name="agent_fields[<?php echo esc_attr($index); ?>][type]">
+                                                    <?php foreach (['text','textarea','number','url','select','password'] as $type_option): ?>
+                                                        <option value="<?php echo esc_attr($type_option); ?>" <?php selected($type, $type_option); ?>>
+                                                            <?php echo esc_html($type_option); ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </td>
+                                            <td><input type="text" name="agent_fields[<?php echo esc_attr($index); ?>][options]" value="<?php echo esc_attr($options); ?>" placeholder="opt1, opt2" /></td>
+                                            <td><input type="text" name="agent_fields[<?php echo esc_attr($index); ?>][placeholder]" value="<?php echo esc_attr($field['placeholder'] ?? ''); ?>" /></td>
+                                            <td><input type="checkbox" name="agent_fields[<?php echo esc_attr($index); ?>][required]" value="1" <?php checked(!empty($field['required'])); ?> /></td>
+                                            <td><input type="text" name="agent_fields[<?php echo esc_attr($index); ?>][env]" value="<?php echo esc_attr($field['env'] ?? ''); ?>" placeholder="AI_GATEWAY_..." /></td>
+                                            <td><button type="button" class="button ai-gateway-remove-field">Supprimer</button></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <p><button type="button" class="button" id="ai-gateway-add-field">Ajouter un champ</button></p>
+                            <p class="description">Options = valeurs separees par des virgules. Env = constante serveur.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="agent_mcp_endpoint">MCP endpoint</label></th>
@@ -101,6 +178,56 @@ function ai_gateway_render_agents_page() {
                 <?php submit_button('Enregistrer'); ?>
             </form>
         </div>
+        <script>
+            (function() {
+                const table = document.getElementById('ai-gateway-input-fields');
+                if (!table) {
+                    return;
+                }
+                const addButton = document.getElementById('ai-gateway-add-field');
+                const tbody = table.querySelector('tbody');
+
+                const buildRow = (index) => {
+                    return `
+                        <tr>
+                            <td><input type="text" name="agent_fields[${index}][label]" value="" /></td>
+                            <td><input type="text" name="agent_fields[${index}][key]" value="" /></td>
+                            <td>
+                                <select name="agent_fields[${index}][type]">
+                                    <option value="text">text</option>
+                                    <option value="textarea">textarea</option>
+                                    <option value="number">number</option>
+                                    <option value="url">url</option>
+                                    <option value="select">select</option>
+                                    <option value="password">password</option>
+                                </select>
+                            </td>
+                            <td><input type="text" name="agent_fields[${index}][options]" value="" placeholder="opt1, opt2" /></td>
+                            <td><input type="text" name="agent_fields[${index}][placeholder]" value="" /></td>
+                            <td><input type="checkbox" name="agent_fields[${index}][required]" value="1" /></td>
+                            <td><input type="text" name="agent_fields[${index}][env]" value="" placeholder="AI_GATEWAY_..." /></td>
+                            <td><button type="button" class="button ai-gateway-remove-field">Supprimer</button></td>
+                        </tr>
+                    `;
+                };
+
+                const removeHandler = (event) => {
+                    if (!event.target.classList.contains('ai-gateway-remove-field')) {
+                        return;
+                    }
+                    const row = event.target.closest('tr');
+                    if (row) {
+                        row.remove();
+                    }
+                };
+
+                tbody.addEventListener('click', removeHandler);
+                addButton.addEventListener('click', () => {
+                    const index = tbody.querySelectorAll('tr').length;
+                    tbody.insertAdjacentHTML('beforeend', buildRow(index));
+                });
+            })();
+        </script>
         <?php
         return;
     }

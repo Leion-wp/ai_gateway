@@ -17,6 +17,10 @@ function ai_gateway_render_settings_page() {
     $repeat_penalty = get_option('ai_gateway_ollama_repeat_penalty', '');
     $seed = get_option('ai_gateway_ollama_seed', '');
     $presets = ai_gateway_get_ollama_presets();
+    $provider_default = ai_gateway_get_provider_default();
+    $provider_source_default = ai_gateway_get_openai_compat_source_default();
+    $providers = ai_gateway_get_provider_list();
+    $provider_sources = ai_gateway_get_openai_compat_sources();
     ?>
     <div class="wrap">
         <h1>Reglages</h1>
@@ -30,6 +34,32 @@ function ai_gateway_render_settings_page() {
             <?php wp_nonce_field('ai_gateway_settings'); ?>
             <input type="hidden" name="action" value="ai_gateway_save_settings" />
             <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="provider_default">Provider par defaut</label></th>
+                    <td>
+                        <select name="provider_default" id="provider_default">
+                            <?php foreach ($providers as $provider_id => $label): ?>
+                                <option value="<?php echo esc_attr($provider_id); ?>" <?php selected($provider_default, $provider_id); ?>>
+                                    <?php echo esc_html($label); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Un agent peut forcer son propre provider.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="provider_source_default">OpenAI-compatible source</label></th>
+                    <td>
+                        <select name="provider_source_default" id="provider_source_default">
+                            <?php foreach ($provider_sources as $source_id => $source_data): ?>
+                                <option value="<?php echo esc_attr($source_id); ?>" <?php selected($provider_source_default, $source_id); ?>>
+                                    <?php echo esc_html($source_data['label'] ?? $source_id); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="description">Utilise seulement si le provider est OpenAI-compatible.</p>
+                    </td>
+                </tr>
                 <tr>
                     <th scope="row"><label for="ollama_url">URL Ollama</label></th>
                     <td><input name="ollama_url" id="ollama_url" type="text" class="regular-text" value="<?php echo esc_attr($ollama_url); ?>" /></td>
@@ -47,6 +77,13 @@ function ai_gateway_render_settings_page() {
             </table>
             <?php submit_button('Enregistrer'); ?>
         </form>
+        <p class="description">
+            Cles et endpoints a definir dans <code>wp-config.php</code>:
+            AI_GATEWAY_OPENAI_KEY, AI_GATEWAY_GROQ_KEY, AI_GATEWAY_OPENROUTER_KEY,
+            AI_GATEWAY_ANTHROPIC_KEY, AI_GATEWAY_AZURE_KEY, AI_GATEWAY_AZURE_ENDPOINT,
+            AI_GATEWAY_AZURE_DEPLOYMENT, AI_GATEWAY_OPENAI_COMPAT_KEY,
+            AI_GATEWAY_CUSTOM_KEY, AI_GATEWAY_CUSTOM_ENDPOINT.
+        </p>
         <h2>Parametres avances Ollama</h2>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('ai_gateway_settings'); ?>
