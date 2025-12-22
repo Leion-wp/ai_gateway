@@ -7,7 +7,6 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
-VERSION="${VERSION#v}"
 ROOT_DIR="$(pwd)"
 DIST_DIR="$(mktemp -d)"
 PLUGIN_DIR="${DIST_DIR}/ai_gateway"
