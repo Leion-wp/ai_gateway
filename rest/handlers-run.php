@@ -33,6 +33,10 @@ function ai_gateway_handle_run($request) {
         'prompt' => $prompt,
         'stream' => false,
     ];
+    $options = ai_gateway_get_ollama_options($agent);
+    if (!empty($options)) {
+        $ollama_payload['options'] = $options;
+    }
 
     $ollama_response = wp_remote_post($ollama_url, [
         'timeout' => 15,

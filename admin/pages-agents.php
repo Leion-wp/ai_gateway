@@ -20,9 +20,13 @@ function ai_gateway_render_agents_page() {
         $input_schema = $agent['input_schema'] ?? [];
         $mcp_endpoint = $agent['mcp_endpoint'] ?? '';
         $output_mode = $agent['output_mode'] ?? 'text';
+        $ollama_preset = $agent['ollama_preset'] ?? '';
         $enabled = $agent['enabled'] ?? true;
         $tools = $agent['tools'] ?? array_keys(ai_gateway_get_tool_definitions());
         $input_json = wp_json_encode($input_schema, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $presets = ai_gateway_get_ollama_presets();
+        $global_preset = ai_gateway_get_ollama_preset();
+        $global_label = isset($presets[$global_preset]['label']) ? $presets[$global_preset]['label'] : $global_preset;
         ?>
         <div class="wrap">
             <h1><?php echo $action === 'new' ? 'Ajouter un agent' : 'Modifier un agent'; ?></h1>
@@ -57,6 +61,19 @@ function ai_gateway_render_agents_page() {
                             <select name="agent_output_mode" id="agent_output_mode">
                                 <option value="text" <?php selected($output_mode, 'text'); ?>>Text</option>
                                 <option value="blocks" <?php selected($output_mode, 'blocks'); ?>>Blocks</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="agent_ollama_preset">Preset Ollama</label></th>
+                        <td>
+                            <select name="agent_ollama_preset" id="agent_ollama_preset">
+                                <option value=""><?php echo esc_html('Global (' . $global_label . ')'); ?></option>
+                                <?php foreach ($presets as $preset_id => $preset_data): ?>
+                                    <option value="<?php echo esc_attr($preset_id); ?>" <?php selected($ollama_preset, $preset_id); ?>>
+                                        <?php echo esc_html($preset_data['label'] ?? $preset_id); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </td>
                     </tr>

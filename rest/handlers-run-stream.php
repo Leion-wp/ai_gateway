@@ -47,6 +47,10 @@ function ai_gateway_handle_run_stream($request) {
         'prompt' => $prompt,
         'stream' => true,
     ];
+    $options = ai_gateway_get_ollama_options($agent);
+    if (!empty($options)) {
+        $ollama_payload['options'] = $options;
+    }
 
     $full_text = '';
     $buffer = '';
