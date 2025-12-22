@@ -12,6 +12,9 @@ function ai_gateway_render_settings_page() {
         <?php if (isset($_GET['settings-updated'])): ?>
             <div class="updated notice"><p>Reglages enregistres.</p></div>
         <?php endif; ?>
+        <?php if (isset($_GET['updated'])): ?>
+            <div class="updated notice"><p>Verification des mises a jour declenchee.</p></div>
+        <?php endif; ?>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('ai_gateway_settings'); ?>
             <input type="hidden" name="action" value="ai_gateway_save_settings" />
@@ -22,6 +25,13 @@ function ai_gateway_render_settings_page() {
                 </tr>
             </table>
             <?php submit_button('Enregistrer'); ?>
+        </form>
+        <hr />
+        <h2>Mises a jour</h2>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('ai_gateway_check_updates'); ?>
+            <input type="hidden" name="action" value="ai_gateway_check_updates" />
+            <?php submit_button('Verifier les mises a jour', 'secondary'); ?>
         </form>
     </div>
     <?php

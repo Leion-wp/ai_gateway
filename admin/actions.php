@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 add_action('admin_post_ai_gateway_save_settings', 'ai_gateway_save_settings');
 add_action('admin_post_ai_gateway_save_agent', 'ai_gateway_save_agent');
 add_action('admin_post_ai_gateway_delete_agent', 'ai_gateway_delete_agent');
+add_action('admin_post_ai_gateway_check_updates', 'ai_gateway_check_updates');
 
 function ai_gateway_save_settings() {
     if (!current_user_can('manage_options')) {
@@ -21,6 +22,20 @@ function ai_gateway_save_settings() {
     }
 
     wp_redirect(add_query_arg('settings-updated', 'true', wp_get_referer()));
+    exit;
+}
+
+function ai_gateway_check_updates() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+
+    check_admin_referer('ai_gateway_check_updates');
+
+    delete_transient('ai_gateway_update_info');
+    wp_update_plugins();
+
+    wp_redirect(admin_url('admin.php?page=ai-gateway-settings&updated=1'));
     exit;
 }
 
