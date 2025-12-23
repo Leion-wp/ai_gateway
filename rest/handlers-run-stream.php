@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 }
 
 function ai_gateway_handle_run_stream($request) {
+    $start = microtime(true);
     $params = ai_gateway_get_json_params($request);
     $agent_id = isset($params['agent_id']) ? absint($params['agent_id']) : 0;
     $instruction = isset($params['instruction']) ? sanitize_textarea_field($params['instruction']) : '';
@@ -15,7 +16,9 @@ function ai_gateway_handle_run_stream($request) {
         return new WP_Error('not_found', 'Agent introuvable.', ['status' => 404]);
     }
 
-    $inputs = ai_gateway_apply_schema_env_values($agent['input_schema'] ?? [], $inputs);
+    $schema = $agent['input_schema'] ?? [];
+    $inputs = ai_gateway_apply_schema_env_values($schema, $inputs);
+    $log_inputs = ai_gateway_redact_env_inputs($schema, $inputs);
 
     $prompt_parts = [];
     if (!empty($agent['system_prompt'])) {
@@ -45,6 +48,21 @@ function ai_gateway_handle_run_stream($request) {
 
     $provider_result = ai_gateway_call_provider($agent, $instruction, $inputs);
     if (isset($provider_result['error']) && $provider_result['error'] !== 'use_ollama_handler') {
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'error',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => $provider_result['error'],
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => '',
+            'output_mode' => $agent['output_mode'],
+        ]);
         echo 'data: ' . wp_json_encode(['error' => $provider_result['error']]) . "\n\n";
         flush();
         exit;
@@ -81,6 +99,22 @@ function ai_gateway_handle_run_stream($request) {
                 $mcp_meta = 'MCP: ' . $agent['mcp_endpoint'];
             }
         }
+
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'success',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => '',
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => $mcp_response_text ?: $provider_result['text'],
+            'output_mode' => $agent['output_mode'],
+        ]);
 
         echo 'data: ' . wp_json_encode([
             'done' => true,
@@ -143,6 +177,21 @@ function ai_gateway_handle_run_stream($request) {
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     if ($result === false) {
         $error = curl_error($ch);
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'error',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => $error,
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => '',
+            'output_mode' => $agent['output_mode'],
+        ]);
         echo 'data: ' . wp_json_encode(['error' => $error]) . "\n\n";
         flush();
     }
@@ -181,6 +230,21 @@ function ai_gateway_handle_run_stream($request) {
     }
 
     if ($http_code === 404) {
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'error',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => 'model_not_found',
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => '',
+            'output_mode' => $agent['output_mode'],
+        ]);
         echo 'data: ' . wp_json_encode([
             'error' => 'model_not_found',
             'model' => $agent['model'],
@@ -191,10 +255,41 @@ function ai_gateway_handle_run_stream($request) {
     }
 
     if (!$done && $full_text === '') {
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'error',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => 'Streaming failed',
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => '',
+            'output_mode' => $agent['output_mode'],
+        ]);
         echo 'data: ' . wp_json_encode(['error' => 'Streaming failed']) . "\n\n";
         flush();
         exit;
     }
+
+    ai_gateway_log_execution([
+        'agent_id' => $agent['id'],
+        'agent_name' => $agent['name'],
+        'provider' => ai_gateway_get_provider_for_agent($agent),
+        'model' => $agent['model'],
+        'status' => 'success',
+        'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+        'error' => '',
+        'input_full' => [
+            'instruction' => $instruction,
+            'inputs' => $log_inputs,
+        ],
+        'output_full' => $mcp_response_text ?: $full_text,
+        'output_mode' => $agent['output_mode'],
+    ]);
 
     echo 'data: ' . wp_json_encode([
         'done' => true,

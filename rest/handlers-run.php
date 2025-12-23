@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 }
 
 function ai_gateway_handle_run($request) {
+    $start = microtime(true);
     $params = ai_gateway_get_json_params($request);
     $agent_id = isset($params['agent_id']) ? absint($params['agent_id']) : 0;
     $instruction = isset($params['instruction']) ? sanitize_textarea_field($params['instruction']) : '';
@@ -15,7 +16,9 @@ function ai_gateway_handle_run($request) {
         return ['error' => 'Agent introuvable.'];
     }
 
-    $inputs = ai_gateway_apply_schema_env_values($agent['input_schema'] ?? [], $inputs);
+    $schema = $agent['input_schema'] ?? [];
+    $inputs = ai_gateway_apply_schema_env_values($schema, $inputs);
+    $log_inputs = ai_gateway_redact_env_inputs($schema, $inputs);
 
     $prompt_parts = [];
     if (!empty($agent['system_prompt'])) {
@@ -31,6 +34,21 @@ function ai_gateway_handle_run($request) {
     $ollama_response_text = '';
     $provider_result = ai_gateway_call_provider($agent, $instruction, $inputs);
     if (isset($provider_result['error']) && $provider_result['error'] !== 'use_ollama_handler') {
+        ai_gateway_log_execution([
+            'agent_id' => $agent['id'],
+            'agent_name' => $agent['name'],
+            'provider' => ai_gateway_get_provider_for_agent($agent),
+            'model' => $agent['model'],
+            'status' => 'error',
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'error' => $provider_result['error'],
+            'input_full' => [
+                'instruction' => $instruction,
+                'inputs' => $log_inputs,
+            ],
+            'output_full' => '',
+            'output_mode' => $agent['output_mode'],
+        ]);
         return ['error' => $provider_result['error']];
     }
     if (isset($provider_result['text'])) {
@@ -60,6 +78,21 @@ function ai_gateway_handle_run($request) {
         $raw_body = wp_remote_retrieve_body($ollama_response);
         $ollama_body = json_decode($raw_body, true);
         if (ai_gateway_is_model_not_found($ollama_response, $ollama_body ?: $raw_body)) {
+            ai_gateway_log_execution([
+                'agent_id' => $agent['id'],
+                'agent_name' => $agent['name'],
+                'provider' => ai_gateway_get_provider_for_agent($agent),
+                'model' => $agent['model'],
+                'status' => 'error',
+                'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+                'error' => 'model_not_found',
+                'input_full' => [
+                    'instruction' => $instruction,
+                    'inputs' => $log_inputs,
+                ],
+                'output_full' => '',
+                'output_mode' => $agent['output_mode'],
+            ]);
             return [
                 'error' => 'model_not_found',
                 'model' => $agent['model'],
@@ -88,6 +121,21 @@ function ai_gateway_handle_run($request) {
         ]);
 
         if (is_wp_error($mcp_response)) {
+            ai_gateway_log_execution([
+                'agent_id' => $agent['id'],
+                'agent_name' => $agent['name'],
+                'provider' => ai_gateway_get_provider_for_agent($agent),
+                'model' => $agent['model'],
+                'status' => 'error',
+                'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+                'error' => $mcp_response->get_error_message(),
+                'input_full' => [
+                    'instruction' => $instruction,
+                    'inputs' => $log_inputs,
+                ],
+                'output_full' => $ollama_response_text,
+                'output_mode' => $agent['output_mode'],
+            ]);
             return ['error' => $mcp_response->get_error_message()];
         }
 
@@ -105,6 +153,22 @@ function ai_gateway_handle_run($request) {
 
         $mcp_meta = 'MCP: ' . $agent['mcp_endpoint'];
     }
+
+    ai_gateway_log_execution([
+        'agent_id' => $agent['id'],
+        'agent_name' => $agent['name'],
+        'provider' => ai_gateway_get_provider_for_agent($agent),
+        'model' => $agent['model'],
+        'status' => 'success',
+        'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+        'error' => '',
+        'input_full' => [
+            'instruction' => $instruction,
+            'inputs' => $log_inputs,
+        ],
+        'output_full' => $mcp_response_text ?: $ollama_response_text,
+        'output_mode' => $agent['output_mode'],
+    ]);
 
     return [
         'ollama_response' => $ollama_response_text,

@@ -8,6 +8,8 @@ add_action('admin_post_ai_gateway_save_settings', 'ai_gateway_save_settings');
 add_action('admin_post_ai_gateway_save_agent', 'ai_gateway_save_agent');
 add_action('admin_post_ai_gateway_delete_agent', 'ai_gateway_delete_agent');
 add_action('admin_post_ai_gateway_check_updates', 'ai_gateway_check_updates');
+add_action('admin_post_ai_gateway_export_agents', 'ai_gateway_export_agents');
+add_action('admin_post_ai_gateway_import_agents', 'ai_gateway_import_agents');
 
 function ai_gateway_save_settings() {
     if (!current_user_can('manage_options')) {
@@ -20,6 +22,7 @@ function ai_gateway_save_settings() {
     $preset = isset($_POST['ollama_preset']) ? sanitize_text_field(wp_unslash($_POST['ollama_preset'])) : 'balanced';
     $provider_default = isset($_POST['provider_default']) ? sanitize_text_field(wp_unslash($_POST['provider_default'])) : 'ollama';
     $provider_source_default = isset($_POST['provider_source_default']) ? sanitize_text_field(wp_unslash($_POST['provider_source_default'])) : 'openrouter';
+    $logs_retention = isset($_POST['logs_retention_days']) ? absint($_POST['logs_retention_days']) : 30;
 
     $int_fields = [
         'ai_gateway_ollama_num_predict' => 'ollama_num_predict',
@@ -55,6 +58,11 @@ function ai_gateway_save_settings() {
         $provider_source_default = 'openrouter';
     }
     update_option('ai_gateway_openai_compat_source', $provider_source_default);
+
+    if ($logs_retention <= 0) {
+        $logs_retention = 30;
+    }
+    update_option('ai_gateway_logs_retention_days', $logs_retention);
 
     foreach ($int_fields as $option => $field) {
         $raw = isset($_POST[$field]) ? wp_unslash($_POST[$field]) : '';
@@ -268,5 +276,84 @@ function ai_gateway_delete_agent() {
     }
 
     wp_redirect(admin_url('admin.php?page=ai-gateway-agents&deleted=1'));
+    exit;
+}
+
+function ai_gateway_export_agents() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+
+    check_admin_referer('ai_gateway_export_agents');
+
+    $agents = ai_gateway_get_agents(false);
+    $payload = [
+        'version' => AI_GATEWAY_VERSION,
+        'exported_at' => gmdate('c'),
+        'agents' => $agents,
+    ];
+
+    $filename = 'ai-gateway-pack-' . gmdate('Ymd-His') . '.json';
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename=' . $filename);
+    echo wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+function ai_gateway_import_agents() {
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+
+    check_admin_referer('ai_gateway_import_agents');
+
+    if (empty($_FILES['agents_pack']['tmp_name'])) {
+        wp_redirect(admin_url('admin.php?page=ai-gateway-agents&imported=0'));
+        exit;
+    }
+
+    $content = file_get_contents($_FILES['agents_pack']['tmp_name']);
+    $decoded = json_decode($content, true);
+    if (!is_array($decoded) || empty($decoded['agents']) || !is_array($decoded['agents'])) {
+        wp_redirect(admin_url('admin.php?page=ai-gateway-agents&imported=0'));
+        exit;
+    }
+
+    $created = 0;
+    foreach ($decoded['agents'] as $agent) {
+        if (!is_array($agent) || empty($agent['name'])) {
+            continue;
+        }
+        $name = sanitize_text_field($agent['name']);
+        $existing = get_page_by_title($name, OBJECT, AI_GATEWAY_POST_TYPE);
+        if ($existing) {
+            $name .= ' (imported)';
+        }
+
+        $post_id = wp_insert_post([
+            'post_title' => $name,
+            'post_type' => AI_GATEWAY_POST_TYPE,
+            'post_status' => 'publish',
+        ], true);
+
+        if (is_wp_error($post_id)) {
+            continue;
+        }
+
+        ai_gateway_update_agent_meta($post_id, $agent);
+        if (isset($agent['tools']) && is_array($agent['tools'])) {
+            update_post_meta($post_id, 'tools', wp_json_encode($agent['tools'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        }
+        if (isset($agent['ollama_preset'])) {
+            update_post_meta($post_id, 'ollama_preset', sanitize_text_field($agent['ollama_preset']));
+        }
+        if (isset($agent['enabled'])) {
+            update_post_meta($post_id, 'enabled', $agent['enabled'] ? '1' : '0');
+        }
+        $created++;
+    }
+
+    wp_redirect(admin_url('admin.php?page=ai-gateway-agents&imported=' . $created));
     exit;
 }

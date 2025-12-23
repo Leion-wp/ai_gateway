@@ -233,9 +233,26 @@ function ai_gateway_render_agents_page() {
     }
 
     $agents = ai_gateway_get_agents(false);
+    $imported = isset($_GET['imported']) ? absint($_GET['imported']) : null;
     ?>
     <div class="wrap">
         <h1>Agents IA</h1>
+        <?php if ($imported !== null): ?>
+            <div class="updated notice"><p><?php echo esc_html($imported); ?> agent(s) importes.</p></div>
+        <?php endif; ?>
+        <div style="margin-bottom:16px;">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline-block; margin-right:12px;">
+                <?php wp_nonce_field('ai_gateway_export_agents'); ?>
+                <input type="hidden" name="action" value="ai_gateway_export_agents" />
+                <?php submit_button('Exporter pack JSON', 'secondary', 'submit', false); ?>
+            </form>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data" style="display:inline-block;">
+                <?php wp_nonce_field('ai_gateway_import_agents'); ?>
+                <input type="hidden" name="action" value="ai_gateway_import_agents" />
+                <input type="file" name="agents_pack" accept="application/json" />
+                <?php submit_button('Importer pack JSON', 'secondary', 'submit', false); ?>
+            </form>
+        </div>
         <p><a href="<?php echo esc_url(admin_url('admin.php?page=ai-gateway-agents&action=new')); ?>" class="button button-primary">Ajouter</a></p>
         <table class="widefat fixed striped">
             <thead>
