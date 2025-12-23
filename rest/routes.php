@@ -189,6 +189,14 @@ add_action('rest_api_init', function() {
         },
     ]);
 
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)/draft', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_update_conversation_draft',
+        'permission_callback' => function() {
+            return current_user_can('edit_posts');
+        },
+    ]);
+
     register_rest_route('ai/v1', '/projects/(?P<id>\d+)', [
         'methods' => 'PUT',
         'callback' => 'ai_gateway_rest_update_project',

@@ -54,6 +54,7 @@ function StudioApp() {
     const [selectedTools, setSelectedTools] = useState([]);
     const [uploadUrl, setUploadUrl] = useState('');
     const [uploadStatus, setUploadStatus] = useState('');
+    const [selectedMedia, setSelectedMedia] = useState(null);
     const [chainAgents, setChainAgents] = useState([]);
     const [useChain, setUseChain] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
@@ -64,6 +65,7 @@ function StudioApp() {
     const [editorTitle, setEditorTitle] = useState('');
     const [editorContent, setEditorContent] = useState('');
     const [editorStatus, setEditorStatus] = useState('');
+    const [errorLogs, setErrorLogs] = useState([]);
 
     const saveMessage = async (conversation, role, content) => {
         if (!conversation) {
@@ -76,8 +78,16 @@ function StudioApp() {
                 data: { role, content },
             });
         } catch (err) {
-            setError(err.message || 'Failed to save message.');
+            logError(err.message || 'Failed to save message.');
         }
+    };
+
+    const logError = (message) => {
+        setError(message);
+        setErrorLogs((prev) => [
+            { message, time: new Date().toISOString() },
+            ...prev.slice(0, 9),
+        ]);
     };
 
     const agent = useMemo(
@@ -124,7 +134,7 @@ function StudioApp() {
                 setAgentId(selected?.id || list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load agents.');
+                    logError(err.message || 'Failed to load agents.');
                 }
             }
         };
@@ -182,7 +192,7 @@ function StudioApp() {
                 setProjectId(list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load projects.');
+                    logError(err.message || 'Failed to load projects.');
                 }
             }
         };
@@ -212,7 +222,7 @@ function StudioApp() {
                 setConversationId(list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load conversations.');
+                    logError(err.message || 'Failed to load conversations.');
                 }
             }
         };
@@ -240,7 +250,7 @@ function StudioApp() {
                 }
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load conversation.');
+                    logError(err.message || 'Failed to load conversation.');
                 }
             }
         };
@@ -271,7 +281,7 @@ function StudioApp() {
 
     const runAgent = async () => {
         if (!agentId) {
-            setError('No agent selected.');
+            logError('No agent selected.');
             return;
         }
 
@@ -352,7 +362,7 @@ function StudioApp() {
                         try {
                             const data = JSON.parse(payload);
                             if (data.error) {
-                                setError(data.error);
+                                logError(data.error);
                                 return;
                             }
                             if (data.delta) {
@@ -364,7 +374,7 @@ function StudioApp() {
                                 setIsTyping(false);
                             }
                         } catch (err) {
-                            setError(err.message || 'Stream parse error.');
+                            logError(err.message || 'Stream parse error.');
                         }
                     });
                 });
@@ -381,14 +391,14 @@ function StudioApp() {
                     },
                 });
                 if (data?.error) {
-                    setError(data.error);
+                    logError(data.error);
                 } else {
                     const result = data?.mcp_response || data?.ollama_response || '';
                     updateAssistant(result, true);
                     saveMessage(activeConversationId, 'assistant', result);
                 }
             } catch (fallbackError) {
-                setError(fallbackError.message || err.message || 'Stream failed.');
+                logError(fallbackError.message || err.message || 'Stream failed.');
             }
         } finally {
             setIsBusy(false);
@@ -439,13 +449,31 @@ function StudioApp() {
                 saveMessage(activeConversationId, 'assistant', message);
             }
         } catch (err) {
-            setError(err.message || 'Chain failed.');
+            logError(err.message || 'Chain failed.');
         } finally {
             setIsBusy(false);
             setIsTyping(false);
             setInstruction('');
         }
     };
+
+    useEffect(() => {
+        if (!conversationId || messages.length === 0) {
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                await apiFetch({
+                    path: `/ai/v1/conversations/${conversationId}/draft`,
+                    method: 'POST',
+                    data: { messages },
+                });
+            } catch (err) {
+                logError(err.message || 'Failed to save draft.');
+            }
+        }, 1200);
+        return () => clearTimeout(timer);
+    }, [conversationId, messages]);
 
     const archiveConversation = async (id) => {
         await apiFetch({
@@ -670,6 +698,16 @@ function StudioApp() {
                         </div>
                     )}
                 </div>
+                {errorLogs.length > 0 && (
+                    <div className="ai-studio-error-log">
+                        <strong>{__('Errors', 'ai-gateway')}</strong>
+                        {errorLogs.map((item, index) => (
+                            <div key={index} className="ai-studio-error-item">
+                                {item.message}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {schema.length > 0 && (
                     <div className="ai-studio-inputs">
@@ -774,6 +812,31 @@ function StudioApp() {
                 ) : workspaceMode === 'upload' ? (
                     <div className="ai-studio-workspace-panel">
                         <h3>{__('Upload image', 'ai-gateway')}</h3>
+                        <button
+                            className="ai-studio-button secondary"
+                            onClick={() => {
+                                if (!window.wp || !window.wp.media) {
+                                    logError('Media library not available.');
+                                    return;
+                                }
+                                const frame = window.wp.media({
+                                    title: 'Select image',
+                                    multiple: false,
+                                    library: { type: 'image' },
+                                });
+                                frame.on('select', () => {
+                                    const selection = frame.state().get('selection').first();
+                                    if (!selection) {
+                                        return;
+                                    }
+                                    const data = selection.toJSON();
+                                    setSelectedMedia({ id: data.id, url: data.url });
+                                });
+                                frame.open();
+                            }}
+                        >
+                            {__('Open Media Library', 'ai-gateway')}
+                        </button>
                         <input
                             className="ai-studio-input"
                             value={uploadUrl}
@@ -791,6 +854,9 @@ function StudioApp() {
                                         data: { url: uploadUrl },
                                     });
                                     setUploadStatus(data?.url ? `Imported: ${data.url}` : 'Imported');
+                                    if (data?.url) {
+                                        setSelectedMedia({ id: data.attachment_id, url: data.url });
+                                    }
                                 } catch (err) {
                                     setUploadStatus(err.message || 'Upload failed.');
                                 }
@@ -798,6 +864,29 @@ function StudioApp() {
                         >
                             {__('Import', 'ai-gateway')}
                         </button>
+                        {selectedMedia?.url && (
+                            <button
+                                className="ai-studio-button"
+                                onClick={async () => {
+                                    let activeConversationId = conversationId;
+                                    if (!activeConversationId) {
+                                        const created = await apiFetch({
+                                            path: '/ai/v1/conversations',
+                                            method: 'POST',
+                                            data: { name: 'Conversation', project_id: projectId },
+                                        });
+                                        activeConversationId = created.id;
+                                        setConversations((prev) => [created, ...prev]);
+                                        setConversationId(created.id);
+                                    }
+                                    const content = `![image](${selectedMedia.url})`;
+                                    setMessages((prev) => [...prev, { role: 'user', content }]);
+                                    saveMessage(activeConversationId, 'user', content);
+                                }}
+                            >
+                                {__('Insert into chat', 'ai-gateway')}
+                            </button>
+                        )}
                         {uploadStatus && <div className="ai-studio-sidebar-empty">{uploadStatus}</div>}
                     </div>
                 ) : workspaceMode === 'chain' ? (
@@ -1095,3 +1184,9 @@ if (document.readyState === 'loading') {
 } else {
     mountApp();
 }
+
+
+
+
+
+
