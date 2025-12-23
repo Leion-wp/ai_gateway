@@ -43,6 +43,12 @@ function StudioApp() {
     const [conversationId, setConversationId] = useState(0);
     const [isBusy, setIsBusy] = useState(false);
     const [error, setError] = useState('');
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [workspaceMode, setWorkspaceMode] = useState('empty');
+    const [activeConversationActions, setActiveConversationActions] = useState(null);
+    const [moveProjectId, setMoveProjectId] = useState(0);
+    const [moveProjectName, setMoveProjectName] = useState('');
+    const [showPlusMenu, setShowPlusMenu] = useState(false);
 
     const saveMessage = async (conversation, role, content) => {
         if (!conversation) {
@@ -64,6 +70,7 @@ function StudioApp() {
         [agents, agentId]
     );
     const schema = normalizeSchema(agent?.input_schema || []).filter((field) => !field.env);
+    const adminBase = settings.adminUrl || '/wp-admin/';
 
     const resetInputs = () => {
         const defaults = {};
@@ -245,7 +252,9 @@ function StudioApp() {
         saveMessage(activeConversationId, 'user', instruction);
 
         try {
-            const response = await fetch('/wp-json/ai/v1/run/stream', {
+            const base = settings.restUrl ? settings.restUrl.replace(/\/$/, '') : '/wp-json/ai/v1';
+            const streamUrl = `${base}/run/stream`;
+            const response = await fetch(streamUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -307,10 +316,76 @@ function StudioApp() {
                 });
             }
         } catch (err) {
-            setError(err.message || 'Stream failed.');
+            try {
+                const data = await apiFetch({
+                    path: '/ai/v1/run',
+                    method: 'POST',
+                    data: {
+                        agent_id: agentId,
+                        instruction,
+                        inputs,
+                    },
+                });
+                if (data?.error) {
+                    setError(data.error);
+                } else {
+                    const result = data?.mcp_response || data?.ollama_response || '';
+                    updateAssistant(result, true);
+                    saveMessage(activeConversationId, 'assistant', result);
+                }
+            } catch (fallbackError) {
+                setError(fallbackError.message || err.message || 'Stream failed.');
+            }
         } finally {
             setIsBusy(false);
             setInstruction('');
+        }
+    };
+
+    const archiveConversation = async (id) => {
+        await apiFetch({
+            path: `/ai/v1/conversations/${id}/archive`,
+            method: 'POST',
+        });
+        setConversations((prev) => prev.filter((item) => item.id !== id));
+        if (conversationId === id) {
+            setConversationId(0);
+        }
+    };
+
+    const deleteConversation = async (id) => {
+        await apiFetch({
+            path: `/ai/v1/conversations/${id}`,
+            method: 'DELETE',
+        });
+        setConversations((prev) => prev.filter((item) => item.id !== id));
+        if (conversationId === id) {
+            setConversationId(0);
+        }
+    };
+
+    const moveConversation = async (id) => {
+        let targetProjectId = moveProjectId;
+        if (!targetProjectId && moveProjectName.trim() !== '') {
+            const created = await apiFetch({
+                path: '/ai/v1/projects',
+                method: 'POST',
+                data: { name: moveProjectName.trim() },
+            });
+            setProjects((prev) => [created, ...prev]);
+            targetProjectId = created.id;
+        }
+        if (!targetProjectId) {
+            return;
+        }
+        await apiFetch({
+            path: `/ai/v1/conversations/${id}`,
+            method: 'PUT',
+            data: { project_id: targetProjectId },
+        });
+        setConversations((prev) => prev.filter((item) => item.id !== id));
+        if (conversationId === id) {
+            setConversationId(0);
         }
     };
 
@@ -335,15 +410,27 @@ function StudioApp() {
                     <div className="ai-studio-sidebar-title">{__('Conversations', 'ai-gateway')}</div>
                     <div className="ai-studio-conversation-list">
                         {conversations.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                className={`ai-studio-conversation ${item.id === conversationId ? 'active' : ''}`}
-                                onClick={() => setConversationId(item.id)}
-                            >
-                                <div className="ai-studio-conversation-title">{item.name}</div>
-                                {item.last && <div className="ai-studio-conversation-last">{item.last}</div>}
-                            </button>
+                            <div key={item.id} className="ai-studio-conversation-row">
+                                <button
+                                    type="button"
+                                    className={`ai-studio-conversation ${item.id === conversationId ? 'active' : ''}`}
+                                    onClick={() => setConversationId(item.id)}
+                                >
+                                    <div className="ai-studio-conversation-title">{item.name}</div>
+                                    {item.last && <div className="ai-studio-conversation-last">{item.last}</div>}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="ai-studio-icon-button"
+                                    onClick={() => {
+                                        setActiveConversationActions(item.id);
+                                        setMoveProjectId(0);
+                                        setMoveProjectName('');
+                                    }}
+                                >
+                                    ⋯
+                                </button>
+                            </div>
                         ))}
                     </div>
                     <button
@@ -382,7 +469,20 @@ function StudioApp() {
                 </div>
                 <div className="ai-studio-sidebar-section">
                     <div className="ai-studio-sidebar-title">{__('Settings', 'ai-gateway')}</div>
-                    <div className="ai-studio-sidebar-empty">{__('Configure in plugin settings.', 'ai-gateway')}</div>
+                    <button
+                        type="button"
+                        className="ai-studio-button secondary"
+                        onClick={() => setShowSettingsModal(true)}
+                    >
+                        {__('Open settings', 'ai-gateway')}
+                    </button>
+                    <button
+                        type="button"
+                        className="ai-studio-button secondary"
+                        onClick={() => setWorkspaceMode('agents')}
+                    >
+                        {__('Agents editor', 'ai-gateway')}
+                    </button>
                 </div>
             </aside>
 
@@ -427,9 +527,45 @@ function StudioApp() {
                 <div className="ai-studio-composer">
                     {error && <div className="ai-studio-error">{error}</div>}
                     <div className="ai-studio-composer-row">
-                        <button className="ai-studio-button icon" type="button" title={__('Add', 'ai-gateway')}>
+                        <button
+                            className="ai-studio-button icon"
+                            type="button"
+                            title={__('Add', 'ai-gateway')}
+                            onClick={() => setShowPlusMenu((prev) => !prev)}
+                        >
                             +
                         </button>
+                        {showPlusMenu && (
+                            <div className="ai-studio-plus-menu">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPlusMenu(false);
+                                        setWorkspaceMode('tools');
+                                    }}
+                                >
+                                    {__('Tools', 'ai-gateway')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPlusMenu(false);
+                                        setWorkspaceMode('upload');
+                                    }}
+                                >
+                                    {__('Upload image', 'ai-gateway')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowPlusMenu(false);
+                                        setWorkspaceMode('chain');
+                                    }}
+                                >
+                                    {__('Chain agents', 'ai-gateway')}
+                                </button>
+                            </div>
+                        )}
                         <textarea
                             className="ai-studio-textarea"
                             rows="3"
@@ -448,6 +584,105 @@ function StudioApp() {
                     </div>
                 </div>
             </main>
+            <aside className="ai-studio-workspace">
+                {workspaceMode === 'agents' ? (
+                    <iframe
+                        title="Agents"
+                        className="ai-studio-iframe"
+                        src={`${adminBase}admin.php?page=ai-gateway-agents&action=edit&agent_id=${agentId}&studio=1`}
+                    />
+                ) : workspaceMode === 'tools' ? (
+                    <div className="ai-studio-workspace-empty">{__('Tools panel (coming soon)', 'ai-gateway')}</div>
+                ) : workspaceMode === 'upload' ? (
+                    <div className="ai-studio-workspace-empty">{__('Upload panel (coming soon)', 'ai-gateway')}</div>
+                ) : workspaceMode === 'chain' ? (
+                    <div className="ai-studio-workspace-empty">{__('Agent chain (coming soon)', 'ai-gateway')}</div>
+                ) : (
+                    <div className="ai-studio-workspace-empty">{__('Workspace', 'ai-gateway')}</div>
+                )}
+            </aside>
+            {activeConversationActions && (
+                <div className="ai-studio-modal">
+                    <div className="ai-studio-modal-card">
+                        <h3>{__('Conversation actions', 'ai-gateway')}</h3>
+                        <label className="ai-studio-field">
+                            <span>{__('Move to project', 'ai-gateway')}</span>
+                            <select
+                                className="ai-studio-select"
+                                value={moveProjectId}
+                                onChange={(event) => setMoveProjectId(Number(event.target.value))}
+                            >
+                                <option value="0">{__('Select project', 'ai-gateway')}</option>
+                                {projects.map((project) => (
+                                    <option key={project.id} value={project.id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="ai-studio-field">
+                            <span>{__('Or create project', 'ai-gateway')}</span>
+                            <input
+                                value={moveProjectName}
+                                onChange={(event) => setMoveProjectName(event.target.value)}
+                                placeholder={__('New project name', 'ai-gateway')}
+                            />
+                        </label>
+                        <div className="ai-studio-modal-actions">
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={async () => {
+                                    await moveConversation(activeConversationActions);
+                                    setActiveConversationActions(null);
+                                }}
+                            >
+                                {__('Move', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={async () => {
+                                    await archiveConversation(activeConversationActions);
+                                    setActiveConversationActions(null);
+                                }}
+                            >
+                                {__('Archive', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button"
+                                onClick={async () => {
+                                    await deleteConversation(activeConversationActions);
+                                    setActiveConversationActions(null);
+                                }}
+                            >
+                                {__('Delete', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => setActiveConversationActions(null)}
+                            >
+                                {__('Cancel', 'ai-gateway')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showSettingsModal && (
+                <div className="ai-studio-modal">
+                    <div className="ai-studio-modal-card large">
+                        <div className="ai-studio-modal-header">
+                            <h3>{__('Settings', 'ai-gateway')}</h3>
+                            <button className="ai-studio-icon-button" onClick={() => setShowSettingsModal(false)}>
+                                ✕
+                            </button>
+                        </div>
+                        <iframe
+                            title="Settings"
+                            className="ai-studio-iframe"
+                            src={`${adminBase}admin.php?page=ai-gateway-settings&studio=1`}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

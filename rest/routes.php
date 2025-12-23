@@ -157,9 +157,49 @@ add_action('rest_api_init', function() {
         },
     ]);
 
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)', [
+        'methods' => 'PUT',
+        'callback' => 'ai_gateway_rest_update_conversation',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)', [
+        'methods' => 'DELETE',
+        'callback' => 'ai_gateway_rest_delete_conversation',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)/archive', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_archive_conversation',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
     register_rest_route('ai/v1', '/conversations/(?P<id>\d+)/messages', [
         'methods' => 'POST',
         'callback' => 'ai_gateway_rest_append_message',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/projects/(?P<id>\d+)', [
+        'methods' => 'PUT',
+        'callback' => 'ai_gateway_rest_update_project',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/projects/(?P<id>\d+)', [
+        'methods' => 'DELETE',
+        'callback' => 'ai_gateway_rest_delete_project',
         'permission_callback' => function() {
             return current_user_can('edit_pages');
         },

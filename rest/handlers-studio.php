@@ -64,6 +64,7 @@ function ai_gateway_rest_create_project($request) {
 
 function ai_gateway_rest_list_conversations($request) {
     $project_id = absint($request->get_param('project_id'));
+    $include_archived = $request->get_param('include_archived') === '1';
     $args = [
         'post_type' => AI_GATEWAY_CONVERSATION_POST_TYPE,
         'post_status' => 'publish',
@@ -79,6 +80,15 @@ function ai_gateway_rest_list_conversations($request) {
                 'value' => (string) $project_id,
                 'compare' => '=',
             ],
+        ];
+    }
+    if (!$include_archived) {
+        if (!isset($args['meta_query'])) {
+            $args['meta_query'] = [];
+        }
+        $args['meta_query'][] = [
+            'key' => 'archived',
+            'compare' => 'NOT EXISTS',
         ];
     }
 
@@ -156,4 +166,75 @@ function ai_gateway_rest_append_message($request) {
     $data = ai_gateway_format_conversation($post);
     $data['messages'] = $messages;
     return $data;
+}
+
+function ai_gateway_rest_update_conversation($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $params = ai_gateway_get_json_params($request);
+    if (isset($params['name'])) {
+        wp_update_post([
+            'ID' => $conversation_id,
+            'post_title' => sanitize_text_field($params['name']),
+        ]);
+    }
+    if (isset($params['project_id'])) {
+        update_post_meta($conversation_id, 'project_id', absint($params['project_id']));
+    }
+
+    $post = get_post($conversation_id);
+    return ai_gateway_format_conversation($post);
+}
+
+function ai_gateway_rest_delete_conversation($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+    wp_delete_post($conversation_id, true);
+    return ['status' => 'deleted', 'id' => $conversation_id];
+}
+
+function ai_gateway_rest_archive_conversation($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+    update_post_meta($conversation_id, 'archived', '1');
+    return ['status' => 'archived', 'id' => $conversation_id];
+}
+
+function ai_gateway_rest_update_project($request) {
+    $project_id = absint($request['id']);
+    $post = get_post($project_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_PROJECT_POST_TYPE) {
+        return new WP_Error('not_found', 'Project not found', ['status' => 404]);
+    }
+
+    $params = ai_gateway_get_json_params($request);
+    if (isset($params['name'])) {
+        wp_update_post([
+            'ID' => $project_id,
+            'post_title' => sanitize_text_field($params['name']),
+        ]);
+    }
+
+    $post = get_post($project_id);
+    return ai_gateway_format_project($post);
+}
+
+function ai_gateway_rest_delete_project($request) {
+    $project_id = absint($request['id']);
+    $post = get_post($project_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_PROJECT_POST_TYPE) {
+        return new WP_Error('not_found', 'Project not found', ['status' => 404]);
+    }
+    wp_delete_post($project_id, true);
+    return ['status' => 'deleted', 'id' => $project_id];
 }
