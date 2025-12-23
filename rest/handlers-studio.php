@@ -295,3 +295,30 @@ function ai_gateway_rest_delete_project($request) {
     wp_delete_post($project_id, true);
     return ['status' => 'deleted', 'id' => $project_id];
 }
+
+function ai_gateway_rest_get_workflow($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $workflow = get_post_meta($conversation_id, 'workflow', true);
+    if (!is_array($workflow)) {
+        $workflow = [];
+    }
+    return ['workflow' => $workflow];
+}
+
+function ai_gateway_rest_update_workflow($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $params = ai_gateway_get_json_params($request);
+    $workflow = isset($params['workflow']) && is_array($params['workflow']) ? $params['workflow'] : [];
+    update_post_meta($conversation_id, 'workflow', $workflow);
+    return ['workflow' => $workflow];
+}

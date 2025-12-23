@@ -65,8 +65,8 @@ function ai_gateway_handle_run($request) {
             $ollama_payload['options'] = $options;
         }
 
-        $ollama_response = wp_remote_post($ollama_url, [
-            'timeout' => 15,
+    $ollama_response = wp_remote_post($ollama_url, [
+        'timeout' => 120,
             'headers' => ['Content-Type' => 'application/json'],
             'body' => wp_json_encode($ollama_payload),
         ]);
@@ -115,7 +115,7 @@ function ai_gateway_handle_run($request) {
         ];
 
         $mcp_response = wp_remote_post(esc_url_raw($agent['mcp_endpoint']), [
-            'timeout' => 20,
+            'timeout' => 120,
             'headers' => ['Content-Type' => 'application/json'],
             'body' => wp_json_encode($mcp_payload),
         ]);

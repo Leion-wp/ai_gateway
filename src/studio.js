@@ -66,6 +66,10 @@ function StudioApp() {
     const [editorContent, setEditorContent] = useState('');
     const [editorStatus, setEditorStatus] = useState('');
     const [errorLogs, setErrorLogs] = useState([]);
+    const [draftId, setDraftId] = useState(0);
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [workflowNodes, setWorkflowNodes] = useState([]);
+    const [workflowStatus, setWorkflowStatus] = useState('');
 
     const saveMessage = async (conversation, role, content) => {
         if (!conversation) {
@@ -256,6 +260,32 @@ function StudioApp() {
         };
 
         loadConversation();
+        return () => {
+            mounted = false;
+        };
+    }, [conversationId]);
+
+    useEffect(() => {
+        if (!conversationId) {
+            setWorkflowNodes([]);
+            return;
+        }
+        let mounted = true;
+        const loadWorkflow = async () => {
+            try {
+                const data = await apiFetch({
+                    path: `/ai/v1/conversations/${conversationId}/workflow`,
+                    method: 'GET',
+                });
+                if (mounted) {
+                    setWorkflowNodes(Array.isArray(data?.workflow) ? data.workflow : []);
+                }
+            } catch (err) {
+                logError(err.message || 'Failed to load workflow.');
+            }
+        };
+
+        loadWorkflow();
         return () => {
             mounted = false;
         };
@@ -454,6 +484,79 @@ function StudioApp() {
             setIsBusy(false);
             setIsTyping(false);
             setInstruction('');
+        }
+    };
+
+    const saveWorkflow = async (nodes) => {
+        if (!conversationId) {
+            return;
+        }
+        await apiFetch({
+            path: `/ai/v1/conversations/${conversationId}/workflow`,
+            method: 'POST',
+            data: { workflow: nodes },
+        });
+    };
+
+    const runWorkflow = async () => {
+        if (!workflowNodes.length) {
+            logError('No workflow nodes.');
+            return;
+        }
+        setWorkflowStatus('Running...');
+        try {
+            let lastOutput = '';
+            for (const node of workflowNodes) {
+                if (node.type === 'run_agent') {
+                    const data = await apiFetch({
+                        path: '/ai/v1/run',
+                        method: 'POST',
+                        data: {
+                            agent_id: node.agentId,
+                            instruction,
+                            inputs,
+                        },
+                    });
+                    lastOutput = data?.mcp_response || data?.ollama_response || '';
+                }
+                if (node.type === 'create_draft') {
+                    const path = node.postType === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
+                    const created = await apiFetch({
+                        path,
+                        method: 'POST',
+                        data: {
+                            title: node.title || 'Draft',
+                            content: lastOutput,
+                            status: 'draft',
+                        },
+                    });
+                    setDraftId(created?.id || 0);
+                    if (created?.id) {
+                        setPreviewUrl(
+                            node.postType === 'page'
+                                ? `${window.location.origin}/?page_id=${created.id}&preview=true`
+                                : `${window.location.origin}/?p=${created.id}&preview=true`
+                        );
+                    }
+                }
+                if (node.type === 'update_draft' && node.postId) {
+                    const path = node.postType === 'page' ? `/wp/v2/pages/${node.postId}` : `/wp/v2/posts/${node.postId}`;
+                    await apiFetch({
+                        path,
+                        method: 'POST',
+                        data: {
+                            content: lastOutput,
+                        },
+                    });
+                }
+                if (node.type === 'insert_image' && selectedMedia?.url) {
+                    lastOutput += `\n\n![image](${selectedMedia.url})`;
+                }
+            }
+            setWorkflowStatus('Done');
+        } catch (err) {
+            logError(err.message || 'Workflow failed.');
+            setWorkflowStatus('Failed');
         }
     };
 
@@ -947,6 +1050,9 @@ function StudioApp() {
                             />
                         </label>
                         {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
+                        {draftId > 0 && (
+                            <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
+                        )}
                         <button
                             className="ai-studio-button"
                             onClick={async () => {
@@ -963,6 +1069,14 @@ function StudioApp() {
                                         },
                                     });
                                     setEditorStatus(`Draft created: #${data.id}`);
+                                    setDraftId(data.id || 0);
+                                    if (data?.id) {
+                                        setPreviewUrl(
+                                            editorType === 'page'
+                                                ? `${window.location.origin}/?page_id=${data.id}&preview=true`
+                                                : `${window.location.origin}/?p=${data.id}&preview=true`
+                                        );
+                                    }
                                 } catch (err) {
                                     setEditorStatus(err.message || 'Failed to create draft.');
                                 }
@@ -970,11 +1084,176 @@ function StudioApp() {
                         >
                             {__('Create draft', 'ai-gateway')}
                         </button>
+                        <button
+                            className="ai-studio-button secondary"
+                            onClick={() => {
+                                const lastAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant');
+                                if (lastAssistant) {
+                                    setEditorContent(lastAssistant.content);
+                                }
+                            }}
+                        >
+                            {__('Use last assistant', 'ai-gateway')}
+                        </button>
+                        {draftId > 0 && (
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={async () => {
+                                    setEditorStatus('');
+                                    try {
+                                        const path = editorType === 'page' ? `/wp/v2/pages/${draftId}` : `/wp/v2/posts/${draftId}`;
+                                        await apiFetch({
+                                            path,
+                                            method: 'POST',
+                                            data: {
+                                                title: editorTitle || 'Draft',
+                                                content: editorContent,
+                                            },
+                                        });
+                                        setEditorStatus('Draft updated.');
+                                    } catch (err) {
+                                        setEditorStatus(err.message || 'Failed to update draft.');
+                                    }
+                                }}
+                            >
+                                {__('Update draft', 'ai-gateway')}
+                            </button>
+                        )}
                     </div>
                 ) : workspaceMode === 'workflow' ? (
-                    <div className="ai-studio-workspace-empty">{__('Workflow editor (coming soon)', 'ai-gateway')}</div>
+                    <div className="ai-studio-workspace-panel">
+                        <h3>{__('Workflow builder', 'ai-gateway')}</h3>
+                        {workflowNodes.map((node, index) => (
+                            <div key={`${node.type}-${index}`} className="ai-studio-workflow-node">
+                                <strong>{node.type}</strong>
+                                {node.type === 'run_agent' && (
+                                    <select
+                                        className="ai-studio-select"
+                                        value={node.agentId || ''}
+                                        onChange={(event) => {
+                                            const next = [...workflowNodes];
+                                            next[index] = { ...node, agentId: Number(event.target.value) };
+                                            setWorkflowNodes(next);
+                                            saveWorkflow(next);
+                                        }}
+                                    >
+                                        <option value="">{__('Select agent', 'ai-gateway')}</option>
+                                        {agents.map((item) => (
+                                            <option key={item.id} value={item.id}>
+                                                {item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                                {(node.type === 'create_draft' || node.type === 'update_draft') && (
+                                    <select
+                                        className="ai-studio-select"
+                                        value={node.postType || 'article'}
+                                        onChange={(event) => {
+                                            const next = [...workflowNodes];
+                                            next[index] = { ...node, postType: event.target.value };
+                                            setWorkflowNodes(next);
+                                            saveWorkflow(next);
+                                        }}
+                                    >
+                                        <option value="article">{__('Article', 'ai-gateway')}</option>
+                                        <option value="page">{__('Page', 'ai-gateway')}</option>
+                                    </select>
+                                )}
+                                {node.type === 'create_draft' && (
+                                    <input
+                                        className="ai-studio-input"
+                                        value={node.title || ''}
+                                        placeholder={__('Draft title', 'ai-gateway')}
+                                        onChange={(event) => {
+                                            const next = [...workflowNodes];
+                                            next[index] = { ...node, title: event.target.value };
+                                            setWorkflowNodes(next);
+                                            saveWorkflow(next);
+                                        }}
+                                    />
+                                )}
+                                {node.type === 'update_draft' && (
+                                    <input
+                                        className="ai-studio-input"
+                                        value={node.postId || ''}
+                                        placeholder={__('Draft ID', 'ai-gateway')}
+                                        onChange={(event) => {
+                                            const next = [...workflowNodes];
+                                            next[index] = { ...node, postId: Number(event.target.value) };
+                                            setWorkflowNodes(next);
+                                            saveWorkflow(next);
+                                        }}
+                                    />
+                                )}
+                                <button
+                                    className="ai-studio-button secondary"
+                                    onClick={() => {
+                                        const next = workflowNodes.filter((_, i) => i !== index);
+                                        setWorkflowNodes(next);
+                                        saveWorkflow(next);
+                                    }}
+                                >
+                                    {__('Remove', 'ai-gateway')}
+                                </button>
+                            </div>
+                        ))}
+                        <div className="ai-studio-workflow-actions">
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => {
+                                    const next = [...workflowNodes, { type: 'run_agent', agentId: agentId || 0 }];
+                                    setWorkflowNodes(next);
+                                    saveWorkflow(next);
+                                }}
+                            >
+                                {__('Add Agent', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => {
+                                    const next = [...workflowNodes, { type: 'create_draft', postType: 'article', title: '' }];
+                                    setWorkflowNodes(next);
+                                    saveWorkflow(next);
+                                }}
+                            >
+                                {__('Add Draft', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => {
+                                    const next = [...workflowNodes, { type: 'update_draft', postType: 'article', postId: 0 }];
+                                    setWorkflowNodes(next);
+                                    saveWorkflow(next);
+                                }}
+                            >
+                                {__('Update Draft', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => {
+                                    const next = [...workflowNodes, { type: 'insert_image' }];
+                                    setWorkflowNodes(next);
+                                    saveWorkflow(next);
+                                }}
+                            >
+                                {__('Insert Image', 'ai-gateway')}
+                            </button>
+                        </div>
+                        <button className="ai-studio-button" onClick={runWorkflow} disabled={isBusy}>
+                            {__('Run workflow', 'ai-gateway')}
+                        </button>
+                        {workflowStatus && <div className="ai-studio-sidebar-empty">{workflowStatus}</div>}
+                    </div>
                 ) : workspaceMode === 'preview' ? (
-                    <div className="ai-studio-workspace-empty">{__('Preview panel (coming soon)', 'ai-gateway')}</div>
+                    <div className="ai-studio-workspace-panel">
+                        <h3>{__('Preview', 'ai-gateway')}</h3>
+                        {previewUrl ? (
+                            <iframe title="Preview" className="ai-studio-iframe" src={previewUrl} />
+                        ) : (
+                            <div className="ai-studio-workspace-empty">{__('No preview yet.', 'ai-gateway')}</div>
+                        )}
+                    </div>
                 ) : (
                     <div className="ai-studio-workspace-empty">{__('Workspace', 'ai-gateway')}</div>
                 )}

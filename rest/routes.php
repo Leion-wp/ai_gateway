@@ -197,6 +197,22 @@ add_action('rest_api_init', function() {
         },
     ]);
 
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)/workflow', [
+        'methods' => 'GET',
+        'callback' => 'ai_gateway_rest_get_workflow',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/conversations/(?P<id>\d+)/workflow', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_update_workflow',
+        'permission_callback' => function() {
+            return current_user_can('edit_pages');
+        },
+    ]);
+
     register_rest_route('ai/v1', '/projects/(?P<id>\d+)', [
         'methods' => 'PUT',
         'callback' => 'ai_gateway_rest_update_project',
