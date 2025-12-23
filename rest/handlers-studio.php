@@ -26,6 +26,7 @@ function ai_gateway_format_conversation($post) {
         'name' => $post->post_title,
         'project_id' => (int) get_post_meta($post->ID, 'project_id', true),
         'last' => $last,
+        'archived' => get_post_meta($post->ID, 'archived', true) === '1',
     ];
 }
 
