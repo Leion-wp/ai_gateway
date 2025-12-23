@@ -5,8 +5,8 @@
   "author": "Eion",
   "license": "GPL-2.0-or-later",
   "scripts": {
-    "build": "wp-scripts build",
-    "start": "wp-scripts start"
+    "build": "wp-scripts build src/index.js src/studio.js --output-path=build",
+    "start": "wp-scripts start src/index.js src/studio.js --output-path=build"
   },
   "devDependencies": {
     "@wordpress/scripts": "^27.9.0"
