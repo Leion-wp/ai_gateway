@@ -123,7 +123,7 @@ function ai_gateway_seed_studio_post() {
         return;
     }
 
-    $content = "<!-- wp:paragraph -->\n<p>AI Studio</p>\n<!-- /wp:paragraph -->";
+    $content = "<!-- wp:ai-gateway/studio /-->";
 
     $post_id = wp_insert_post([
         'post_title' => 'AI Studio',

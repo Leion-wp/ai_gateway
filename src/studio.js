@@ -380,9 +380,23 @@ function StudioApp() {
                     <div className="ai-studio-sidebar-title">{__('Tools', 'ai-gateway')}</div>
                     <div className="ai-studio-sidebar-empty">{__('Assigned via agent.', 'ai-gateway')}</div>
                 </div>
+                <div className="ai-studio-sidebar-section">
+                    <div className="ai-studio-sidebar-title">{__('Settings', 'ai-gateway')}</div>
+                    <div className="ai-studio-sidebar-empty">{__('Configure in plugin settings.', 'ai-gateway')}</div>
+                </div>
             </aside>
 
             <main className="ai-studio-main">
+                <div className="ai-studio-topbar">
+                    <div className="ai-studio-topbar-left">
+                        <span className="ai-studio-topbar-label">{__('Active agent', 'ai-gateway')}</span>
+                        <span className="ai-studio-topbar-value">{agent?.name || __('None', 'ai-gateway')}</span>
+                    </div>
+                    <div className="ai-studio-topbar-right">
+                        <span className="ai-studio-status-dot" />
+                        <span>{__('Ollama: online', 'ai-gateway')}</span>
+                    </div>
+                </div>
                 <div className="ai-studio-chat">
                     {messages.map((msg, index) => (
                         <div key={index} className={`ai-studio-message ai-studio-${msg.role}`}>
@@ -412,17 +426,22 @@ function StudioApp() {
 
                 <div className="ai-studio-composer">
                     {error && <div className="ai-studio-error">{error}</div>}
-                    <textarea
-                        className="ai-studio-textarea"
-                        rows="3"
-                        placeholder={__('Ask something...', 'ai-gateway')}
-                        value={instruction}
-                        onChange={(event) => setInstruction(event.target.value)}
-                    />
-                    <div className="ai-studio-actions">
+                    <div className="ai-studio-composer-row">
+                        <button className="ai-studio-button icon" type="button" title={__('Add', 'ai-gateway')}>
+                            +
+                        </button>
+                        <textarea
+                            className="ai-studio-textarea"
+                            rows="3"
+                            placeholder={__('Ask something...', 'ai-gateway')}
+                            value={instruction}
+                            onChange={(event) => setInstruction(event.target.value)}
+                        />
                         <button className="ai-studio-button" onClick={runAgent} disabled={isBusy}>
                             {isBusy ? __('Running...', 'ai-gateway') : __('Send', 'ai-gateway')}
                         </button>
+                    </div>
+                    <div className="ai-studio-actions">
                         <button className="ai-studio-button secondary" onClick={resetInputs}>
                             {__('Reset', 'ai-gateway')}
                         </button>
