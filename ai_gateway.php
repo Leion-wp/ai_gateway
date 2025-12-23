@@ -2,7 +2,7 @@
 /*
 Plugin Name: AI Gateway
 Description: Connecte WordPress a Ollama et MCP via Gutenberg.
-Version: 2.1.7
+Version: 2.2
 Author: Eion
 Text Domain: ai-gateway
 */
@@ -19,10 +19,12 @@ require_once __DIR__ . '/core/ollama.php';
 require_once __DIR__ . '/core/providers.php';
 require_once __DIR__ . '/core/agents.php';
 require_once __DIR__ . '/core/executions.php';
+require_once __DIR__ . '/core/studio.php';
 require_once __DIR__ . '/core/updater.php';
 
 require_once __DIR__ . '/editor/sidebar.php';
 require_once __DIR__ . '/editor/enqueue.php';
+require_once __DIR__ . '/editor/studio-enqueue.php';
 
 require_once __DIR__ . '/admin/menu.php';
 require_once __DIR__ . '/admin/pages-settings.php';
@@ -40,6 +42,7 @@ require_once __DIR__ . '/rest/handlers-agents.php';
 require_once __DIR__ . '/rest/handlers-media.php';
 require_once __DIR__ . '/rest/handlers-plugins.php';
 require_once __DIR__ . '/rest/handlers-ollama.php';
+require_once __DIR__ . '/rest/handlers-studio.php';
 require_once __DIR__ . '/rest/routes.php';
 
 new AIGateway_Updater(

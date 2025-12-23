@@ -22,6 +22,10 @@ function ai_gateway_render_settings_page() {
     $provider_source_default = ai_gateway_get_openai_compat_source_default();
     $providers = ai_gateway_get_provider_list();
     $provider_sources = ai_gateway_get_openai_compat_sources();
+    $studio_capability = get_option('ai_gateway_studio_capability', 'edit_pages');
+    $studio_fullscreen = get_option('ai_gateway_studio_fullscreen', '1');
+    $studio_default_agent = (int) get_option('ai_gateway_studio_default_agent', 0);
+    $agents = ai_gateway_get_agents(false);
     ?>
     <div class="wrap">
         <h1>Reglages</h1>
@@ -78,6 +82,40 @@ function ai_gateway_render_settings_page() {
                 <tr>
                     <th scope="row"><label for="logs_retention_days">Conservation logs (jours)</label></th>
                     <td><input name="logs_retention_days" id="logs_retention_days" type="number" min="1" class="regular-text" value="<?php echo esc_attr($retention_days); ?>" /></td>
+                </tr>
+            </table>
+            <?php submit_button('Enregistrer'); ?>
+        </form>
+        <h2>AI Studio</h2>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <?php wp_nonce_field('ai_gateway_settings'); ?>
+            <input type="hidden" name="action" value="ai_gateway_save_settings" />
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="studio_capability">Acces</label></th>
+                    <td>
+                        <select name="studio_capability" id="studio_capability">
+                            <option value="edit_pages" <?php selected($studio_capability, 'edit_pages'); ?>>Editeurs</option>
+                            <option value="manage_options" <?php selected($studio_capability, 'manage_options'); ?>>Admins uniquement</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="studio_fullscreen">Full screen</label></th>
+                    <td><input type="checkbox" name="studio_fullscreen" id="studio_fullscreen" value="1" <?php checked($studio_fullscreen, '1'); ?> /></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="studio_default_agent">Agent par defaut</label></th>
+                    <td>
+                        <select name="studio_default_agent" id="studio_default_agent">
+                            <option value="0">Aucun</option>
+                            <?php foreach ($agents as $agent): ?>
+                                <option value="<?php echo esc_attr($agent['id']); ?>" <?php selected($studio_default_agent, $agent['id']); ?>>
+                                    <?php echo esc_html($agent['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
                 </tr>
             </table>
             <?php submit_button('Enregistrer'); ?>

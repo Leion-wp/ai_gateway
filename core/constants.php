@@ -19,3 +19,15 @@ if (!defined('AI_GATEWAY_PLUGIN_URL')) {
 if (!defined('AI_GATEWAY_POST_TYPE')) {
     define('AI_GATEWAY_POST_TYPE', 'ai_agent');
 }
+
+if (!defined('AI_GATEWAY_STUDIO_POST_TYPE')) {
+    define('AI_GATEWAY_STUDIO_POST_TYPE', 'ai_studio');
+}
+
+if (!defined('AI_GATEWAY_PROJECT_POST_TYPE')) {
+    define('AI_GATEWAY_PROJECT_POST_TYPE', 'ai_project');
+}
+
+if (!defined('AI_GATEWAY_CONVERSATION_POST_TYPE')) {
+    define('AI_GATEWAY_CONVERSATION_POST_TYPE', 'ai_conversation');
+}

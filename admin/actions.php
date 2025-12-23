@@ -23,6 +23,9 @@ function ai_gateway_save_settings() {
     $provider_default = isset($_POST['provider_default']) ? sanitize_text_field(wp_unslash($_POST['provider_default'])) : 'ollama';
     $provider_source_default = isset($_POST['provider_source_default']) ? sanitize_text_field(wp_unslash($_POST['provider_source_default'])) : 'openrouter';
     $logs_retention = isset($_POST['logs_retention_days']) ? absint($_POST['logs_retention_days']) : 30;
+    $studio_capability = isset($_POST['studio_capability']) ? sanitize_text_field(wp_unslash($_POST['studio_capability'])) : 'edit_pages';
+    $studio_fullscreen = isset($_POST['studio_fullscreen']) ? '1' : '0';
+    $studio_default_agent = isset($_POST['studio_default_agent']) ? absint($_POST['studio_default_agent']) : 0;
 
     $int_fields = [
         'ai_gateway_ollama_num_predict' => 'ollama_num_predict',
@@ -63,6 +66,13 @@ function ai_gateway_save_settings() {
         $logs_retention = 30;
     }
     update_option('ai_gateway_logs_retention_days', $logs_retention);
+
+    if (!in_array($studio_capability, ['edit_pages', 'manage_options'], true)) {
+        $studio_capability = 'edit_pages';
+    }
+    update_option('ai_gateway_studio_capability', $studio_capability);
+    update_option('ai_gateway_studio_fullscreen', $studio_fullscreen);
+    update_option('ai_gateway_studio_default_agent', $studio_default_agent);
 
     foreach ($int_fields as $option => $field) {
         $raw = isset($_POST[$field]) ? wp_unslash($_POST[$field]) : '';
