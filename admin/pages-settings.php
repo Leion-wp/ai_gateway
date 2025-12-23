@@ -17,6 +17,7 @@ function ai_gateway_render_settings_page() {
     $repeat_penalty = get_option('ai_gateway_ollama_repeat_penalty', '');
     $seed = get_option('ai_gateway_ollama_seed', '');
     $presets = ai_gateway_get_ollama_presets();
+    $retention_days = ai_gateway_get_logs_retention_days();
     $provider_default = ai_gateway_get_provider_default();
     $provider_source_default = ai_gateway_get_openai_compat_source_default();
     $providers = ai_gateway_get_provider_list();
@@ -73,6 +74,10 @@ function ai_gateway_render_settings_page() {
                             <option value="quality" <?php selected($preset, 'quality'); ?>>Qualite</option>
                         </select>
                     </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="logs_retention_days">Conservation logs (jours)</label></th>
+                    <td><input name="logs_retention_days" id="logs_retention_days" type="number" min="1" class="regular-text" value="<?php echo esc_attr($retention_days); ?>" /></td>
                 </tr>
             </table>
             <?php submit_button('Enregistrer'); ?>

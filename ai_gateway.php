@@ -18,6 +18,7 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/core/ollama.php';
 require_once __DIR__ . '/core/providers.php';
 require_once __DIR__ . '/core/agents.php';
+require_once __DIR__ . '/core/executions.php';
 require_once __DIR__ . '/core/updater.php';
 
 require_once __DIR__ . '/editor/sidebar.php';
@@ -29,6 +30,8 @@ require_once __DIR__ . '/admin/pages-agents.php';
 require_once __DIR__ . '/admin/actions.php';
 require_once __DIR__ . '/admin/pages-plugins.php';
 require_once __DIR__ . '/admin/actions-plugins.php';
+require_once __DIR__ . '/admin/pages-executions.php';
+require_once __DIR__ . '/admin/actions-executions.php';
 
 require_once __DIR__ . '/rest/handlers-run.php';
 require_once __DIR__ . '/rest/handlers-run-stream.php';
