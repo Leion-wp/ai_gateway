@@ -26,8 +26,20 @@ function ai_gateway_render_settings_page() {
     $studio_fullscreen = get_option('ai_gateway_studio_fullscreen', '1');
     $studio_default_agent = (int) get_option('ai_gateway_studio_default_agent', 0);
     $agents = ai_gateway_get_agents(false);
+    $studio = !empty($_GET['studio']);
     ?>
     <div class="wrap">
+        <?php if ($studio): ?>
+            <style>
+                #wpadminbar, #adminmenuwrap, #adminmenuback, #wpfooter { display: none; }
+                #wpcontent { margin-left: 0 !important; padding-left: 0 !important; }
+                #wpbody-content { padding-top: 0 !important; }
+                body { background: #0f1115; color: #e5e7eb; }
+                .wrap { background: #111318; border: 1px solid #262b36; border-radius: 14px; padding: 24px; }
+                .form-table th, .form-table td { color: #e5e7eb; }
+                input, select, textarea { background: #0f1115; color: #e5e7eb; border-color: #2c313c; }
+            </style>
+        <?php endif; ?>
         <h1>Reglages</h1>
         <?php if (isset($_GET['settings-updated'])): ?>
             <div class="updated notice"><p>Reglages enregistres.</p></div>

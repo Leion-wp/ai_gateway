@@ -13,6 +13,7 @@ function ai_gateway_render_agents_page() {
     $agent_id = isset($_GET['agent_id']) ? absint($_GET['agent_id']) : 0;
 
     if ($action === 'edit' || $action === 'new') {
+        $studio = !empty($_GET['studio']);
         $agent = $agent_id ? ai_gateway_get_agent($agent_id) : null;
         $name = $agent['name'] ?? '';
         $model = $agent['model'] ?? '';
@@ -33,6 +34,17 @@ function ai_gateway_render_agents_page() {
         $input_schema = ai_gateway_normalize_input_schema($input_schema);
         ?>
         <div class="wrap">
+            <?php if ($studio): ?>
+                <style>
+                    #wpadminbar, #adminmenuwrap, #adminmenuback, #wpfooter { display: none; }
+                    #wpcontent { margin-left: 0 !important; padding-left: 0 !important; }
+                    #wpbody-content { padding-top: 0 !important; }
+                    body { background: #0f1115; color: #e5e7eb; }
+                    .wrap { background: #111318; border: 1px solid #262b36; border-radius: 14px; padding: 24px; }
+                    .form-table th, .form-table td { color: #e5e7eb; }
+                    input, select, textarea { background: #0f1115; color: #e5e7eb; border-color: #2c313c; }
+                </style>
+            <?php endif; ?>
             <h1><?php echo $action === 'new' ? 'Ajouter un agent' : 'Modifier un agent'; ?></h1>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <?php wp_nonce_field('ai_gateway_save_agent'); ?>

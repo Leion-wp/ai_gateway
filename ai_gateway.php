@@ -29,6 +29,7 @@ require_once __DIR__ . '/editor/studio-enqueue.php';
 require_once __DIR__ . '/admin/menu.php';
 require_once __DIR__ . '/admin/pages-settings.php';
 require_once __DIR__ . '/admin/pages-agents.php';
+require_once __DIR__ . '/admin/pages-studio.php';
 require_once __DIR__ . '/admin/actions.php';
 require_once __DIR__ . '/admin/pages-plugins.php';
 require_once __DIR__ . '/admin/actions-plugins.php';
