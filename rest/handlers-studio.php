@@ -307,7 +307,11 @@ function ai_gateway_rest_get_workflow($request) {
     if (!is_array($workflow)) {
         $workflow = [];
     }
-    return ['workflow' => $workflow];
+    $versions = get_post_meta($conversation_id, 'workflow_versions', true);
+    if (!is_array($versions)) {
+        $versions = [];
+    }
+    return ['workflow' => $workflow, 'versions' => $versions];
 }
 
 function ai_gateway_rest_update_workflow($request) {
@@ -319,6 +323,23 @@ function ai_gateway_rest_update_workflow($request) {
 
     $params = ai_gateway_get_json_params($request);
     $workflow = isset($params['workflow']) && is_array($params['workflow']) ? $params['workflow'] : [];
+    $save_version = !empty($params['save_version']);
+    $note = isset($params['note']) ? sanitize_text_field($params['note']) : '';
     update_post_meta($conversation_id, 'workflow', $workflow);
-    return ['workflow' => $workflow];
+
+    $versions = get_post_meta($conversation_id, 'workflow_versions', true);
+    if (!is_array($versions)) {
+        $versions = [];
+    }
+    if ($save_version) {
+        array_unshift($versions, [
+            'saved_at' => gmdate('c'),
+            'note' => $note,
+            'workflow' => $workflow,
+        ]);
+        $versions = array_slice($versions, 0, 20);
+        update_post_meta($conversation_id, 'workflow_versions', $versions);
+    }
+
+    return ['workflow' => $workflow, 'versions' => $versions];
 }

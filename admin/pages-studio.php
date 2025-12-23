@@ -42,7 +42,9 @@ function ai_gateway_render_studio_admin_page() {
         .ai-studio-admin .ai-studio-topbar-label { font-size: 12px; text-transform: uppercase; color: #9ca3af; margin-right: 8px; }
         .ai-studio-admin .ai-studio-topbar-value { font-weight: 600; }
         .ai-studio-admin .ai-studio-topbar-right { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #9ca3af; }
-        .ai-studio-admin .ai-studio-topbar-right .ai-studio-select { padding: 6px 8px; font-size: 12px; }
+        .ai-studio-admin .ai-studio-tabs { display: flex; gap: 6px; }
+        .ai-studio-admin .ai-studio-tab { background: #1f2430; color: #9ca3af; border: 1px solid #2c313c; border-radius: 10px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+        .ai-studio-admin .ai-studio-tab.active { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }
         .ai-studio-admin .ai-studio-status-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; display: inline-block; }
         .ai-studio-admin .ai-studio-chat { height: clamp(280px, 45vh, 480px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px; border: 1px solid #262b36; border-radius: 14px; background: #0f1115; }
         .ai-studio-admin .ai-studio-message { padding: 12px; border-radius: 12px; background: #1a1f29; color: #e5e7eb; }
@@ -72,10 +74,24 @@ function ai_gateway_render_studio_admin_page() {
         .ai-studio-admin .ai-studio-workspace { position: relative; background: #111318; border-radius: 14px; padding: 12px; border: 1px solid #262b36; display: flex; flex-direction: column; }
         .ai-studio-admin .ai-studio-workspace-empty { color: #9ca3af; font-size: 13px; text-align: center; margin-top: 24px; }
         .ai-studio-admin .ai-studio-workspace-panel { display: flex; flex-direction: column; gap: 12px; color: #e5e7eb; }
-        .ai-studio-admin .ai-studio-workflow-node { background: #171a21; border: 1px solid #262b36; border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+        .ai-studio-admin .ai-studio-workspace-panel.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+        .ai-studio-admin .ai-studio-split-panel { background: #0f1115; border: 1px solid #262b36; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-height: 420px; }
+        .ai-studio-admin .ai-studio-workspace-panel.preview { height: calc(100vh - 180px); }
+        .ai-studio-admin .ai-studio-workflow-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .ai-studio-admin .ai-studio-workflow-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ai-studio-admin .ai-studio-workflow-versions { border: 1px dashed #2c313c; border-radius: 12px; padding: 10px; background: #0f1115; display: flex; flex-direction: column; gap: 8px; }
+        .ai-studio-admin .ai-studio-workflow-version { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .ai-studio-admin .ai-studio-workflow-version-title { font-size: 12px; font-weight: 600; }
+        .ai-studio-admin .ai-studio-workflow-version-meta { font-size: 11px; color: #9ca3af; }
+        .ai-studio-admin .ai-studio-workflow-canvas { position: relative; border: 1px dashed #2c313c; border-radius: 12px; background: #0f1115; overflow: auto; }
+        .ai-studio-admin .ai-studio-workflow-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .ai-studio-admin .ai-studio-workflow-node { position: absolute; background: #171a21; border: 1px solid #262b36; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .ai-studio-admin .ai-studio-workflow-node-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #e5e7eb; cursor: move; }
+        .ai-studio-admin .ai-studio-workflow-node-actions { display: flex; gap: 6px; }
+        .ai-studio-admin .ai-studio-workflow-node-body { display: flex; flex-direction: column; gap: 8px; }
         .ai-studio-admin .ai-studio-workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; }
         .ai-studio-admin .ai-studio-input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #2c313c; background: #0f1115; color: #e5e7eb; }
-        .ai-studio-admin .ai-studio-iframe { width: 100%; height: 100%; border: none; border-radius: 12px; background: #0f1115; }
+        .ai-studio-admin .ai-studio-iframe { width: 100%; height: 100%; border: none; border-radius: 12px; background: #0f1115; min-height: 420px; }
         .ai-studio-admin .ai-studio-resizer { position: absolute; left: -6px; top: 0; bottom: 0; width: 12px; cursor: ew-resize; }
         .ai-studio-admin .ai-studio-modal { position: fixed; inset: 0; background: rgba(15, 17, 21, 0.7); display: flex; align-items: center; justify-content: center; z-index: 9999; }
         .ai-studio-admin .ai-studio-modal-card { background: #111318; border: 1px solid #262b36; border-radius: 16px; padding: 20px; width: 420px; color: #e5e7eb; display: flex; flex-direction: column; gap: 12px; }
@@ -83,8 +99,10 @@ function ai_gateway_render_studio_admin_page() {
         .ai-studio-admin .ai-studio-modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
         .ai-studio-admin .ai-studio-modal-header { display: flex; align-items: center; justify-content: space-between; }
         .ai-studio-admin .ai-studio-project-row { display: flex; gap: 8px; align-items: center; }
+        .ai-studio-admin .ai-studio-button.tiny { padding: 4px 8px; font-size: 11px; border-radius: 8px; }
         @media (max-width: 900px) {
             .ai-studio-admin .ai-studio-app { grid-template-columns: 1fr; }
+            .ai-studio-admin .ai-studio-workspace-panel.split { grid-template-columns: 1fr; }
         }
     </style>
     <div class="ai-studio-admin">
