@@ -2,7 +2,7 @@
 /*
 Plugin Name: AI Gateway
 Description: Connecte WordPress a Ollama et MCP via Gutenberg.
-Version: 2.1.0
+Version: 2.1.7
 Author: Eion
 Text Domain: ai-gateway
 */
