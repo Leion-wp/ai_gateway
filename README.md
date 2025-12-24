@@ -38,6 +38,7 @@ AI Gateway is a local-first WordPress plugin that connects Gutenberg to Ollama (
 - Update posts by ID and publish/schedule
 - Workflow canvas (node-based, sequential execution)
 - Admin iframe inside Studio (no context switching)
+- Plugin manager (search/install/activate/deactivate/delete)
 
 ## Quick start
 1. Upload the plugin folder to `wp-content/plugins/ai-gateway`
@@ -85,8 +86,11 @@ Base: `/wp-json/ai/v1`
 - `DELETE /agents/{id}`
 - `POST /media/import`
 - `GET /plugins`
+- `GET /plugins/search`
+- `POST /plugins/install`
 - `POST /plugins/activate`
 - `POST /plugins/deactivate`
+- `POST /plugins/delete`
 - `GET /projects`
 - `POST /projects`
 - `PUT /projects/{id}`

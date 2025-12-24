@@ -93,6 +93,22 @@ add_action('rest_api_init', function() {
         },
     ]);
 
+    register_rest_route('ai/v1', '/plugins/search', [
+        'methods' => 'GET',
+        'callback' => 'ai_gateway_rest_search_plugins',
+        'permission_callback' => function() {
+            return current_user_can('install_plugins');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/plugins/install', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_install_plugin',
+        'permission_callback' => function() {
+            return current_user_can('install_plugins');
+        },
+    ]);
+
     register_rest_route('ai/v1', '/plugins/activate', [
         'methods' => 'POST',
         'callback' => 'ai_gateway_rest_activate_plugin',
@@ -106,6 +122,14 @@ add_action('rest_api_init', function() {
         'callback' => 'ai_gateway_rest_deactivate_plugin',
         'permission_callback' => function() {
             return current_user_can('activate_plugins');
+        },
+    ]);
+
+    register_rest_route('ai/v1', '/plugins/delete', [
+        'methods' => 'POST',
+        'callback' => 'ai_gateway_rest_delete_plugin',
+        'permission_callback' => function() {
+            return current_user_can('delete_plugins');
         },
     ]);
 

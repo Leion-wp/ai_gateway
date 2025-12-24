@@ -104,6 +104,11 @@ function StudioApp() {
     const [intentHint, setIntentHint] = useState('');
     const [pluginTools, setPluginTools] = useState([]);
     const [selectedPluginTools, setSelectedPluginTools] = useState([]);
+    const [pluginList, setPluginList] = useState([]);
+    const [pluginSearchQuery, setPluginSearchQuery] = useState('');
+    const [pluginSearchResults, setPluginSearchResults] = useState([]);
+    const [pluginActionStatus, setPluginActionStatus] = useState('');
+    const [isPluginBusy, setIsPluginBusy] = useState(false);
     const [updatePostType, setUpdatePostType] = useState('article');
     const [updatePostId, setUpdatePostId] = useState('');
     const [publishAt, setPublishAt] = useState('');
@@ -185,6 +190,14 @@ function StudioApp() {
         const merged = [...new Set([...selectedTools, ...intent.tools])];
         const filtered = available.length ? merged.filter((tool) => available.includes(tool)) : merged;
         setSelectedTools(filtered);
+        if (intent.tools.some((tool) => /seo/i.test(tool))) {
+            const seoPlugins = pluginTools
+                .filter((plugin) => plugin.active && /yoast|rank\s*math/i.test(plugin.name))
+                .map((plugin) => plugin.tool);
+            if (seoPlugins.length) {
+                setSelectedPluginTools((prev) => [...new Set([...prev, ...seoPlugins])]);
+            }
+        }
         return filtered;
     };
 
@@ -255,6 +268,115 @@ function StudioApp() {
         });
     };
 
+    const refreshPlugins = async () => {
+        const data = await apiFetch({ path: '/ai/v1/plugins', method: 'GET' });
+        const list = Array.isArray(data) ? data : [];
+        setPluginList(list);
+        const normalized = list
+            .map((item) => ({
+                name: item.name,
+                active: Boolean(item.active),
+            }))
+            .filter((item) => /yoast|rank\s*math|ewww/i.test(item.name || ''))
+            .map((item) => ({
+                ...item,
+                tool: item.name,
+            }));
+        setPluginTools(normalized);
+    };
+
+    const searchPlugins = async () => {
+        if (!pluginSearchQuery.trim()) {
+            setPluginSearchResults([]);
+            return;
+        }
+        setIsPluginBusy(true);
+        setPluginActionStatus('');
+        try {
+            const data = await apiFetch({
+                path: `/ai/v1/plugins/search?query=${encodeURIComponent(pluginSearchQuery.trim())}`,
+                method: 'GET',
+            });
+            setPluginSearchResults(Array.isArray(data) ? data : []);
+        } catch (err) {
+            setPluginActionStatus(err.message || 'Plugin search failed.');
+        } finally {
+            setIsPluginBusy(false);
+        }
+    };
+
+    const installPlugin = async (slug) => {
+        setIsPluginBusy(true);
+        setPluginActionStatus('');
+        try {
+            await apiFetch({
+                path: '/ai/v1/plugins/install',
+                method: 'POST',
+                data: { slug },
+            });
+            setPluginActionStatus(`Installed: ${slug}`);
+            await refreshPlugins();
+        } catch (err) {
+            setPluginActionStatus(err.message || 'Install failed.');
+        } finally {
+            setIsPluginBusy(false);
+        }
+    };
+
+    const activatePlugin = async (pluginFile) => {
+        setIsPluginBusy(true);
+        setPluginActionStatus('');
+        try {
+            await apiFetch({
+                path: '/ai/v1/plugins/activate',
+                method: 'POST',
+                data: { plugin_file: pluginFile },
+            });
+            await refreshPlugins();
+        } catch (err) {
+            setPluginActionStatus(err.message || 'Activation failed.');
+        } finally {
+            setIsPluginBusy(false);
+        }
+    };
+
+    const deactivatePlugin = async (pluginFile) => {
+        setIsPluginBusy(true);
+        setPluginActionStatus('');
+        try {
+            await apiFetch({
+                path: '/ai/v1/plugins/deactivate',
+                method: 'POST',
+                data: { plugin_file: pluginFile },
+            });
+            await refreshPlugins();
+        } catch (err) {
+            setPluginActionStatus(err.message || 'Deactivation failed.');
+        } finally {
+            setIsPluginBusy(false);
+        }
+    };
+
+    const deletePlugin = async (pluginFile) => {
+        if (!window.confirm('Delete this plugin?')) {
+            return;
+        }
+        setIsPluginBusy(true);
+        setPluginActionStatus('');
+        try {
+            await apiFetch({
+                path: '/ai/v1/plugins/delete',
+                method: 'POST',
+                data: { plugin_file: pluginFile },
+            });
+            await refreshPlugins();
+        } catch (err) {
+            setPluginActionStatus(err.message || 'Delete failed.');
+        } finally {
+            setIsPluginBusy(false);
+        }
+    };
+
     const injectChatToEditor = () => {
         const content = getLastChatContent();
         if (!content) {
@@ -284,6 +406,9 @@ function StudioApp() {
             logError('No chat content to create draft.');
             return;
         }
+        if (!window.confirm('Create a draft from the latest chat content?')) {
+            return;
+        }
         const title = editorTitle || getConversationName();
         setChatToolStatus('');
         setEditorStatus('');
@@ -310,6 +435,9 @@ function StudioApp() {
         }
         if (!updatePostId) {
             logError('Post ID is required.');
+            return;
+        }
+        if (!window.confirm(`Update post #${updatePostId} from chat content?`)) {
             return;
         }
         setChatToolStatus('');
@@ -372,14 +500,13 @@ function StudioApp() {
                     return;
                 }
                 const list = Array.isArray(data) ? data : [];
+                setPluginList(list);
                 const normalized = list
                     .map((item) => ({
                         name: item.name,
                         active: Boolean(item.active),
                     }))
-                    .filter((item) =>
-                        /yoast|rank\s*math|ewww/i.test(item.name || '')
-                    )
+                    .filter((item) => /yoast|rank\s*math|ewww/i.test(item.name || ''))
                     .map((item) => ({
                         ...item,
                         tool: item.name,
@@ -750,9 +877,21 @@ function StudioApp() {
         setIsTyping(true);
         setError('');
 
-        const fullInstruction = selectedTools.length
-            ? `${instruction}\n\nTools: ${selectedTools.join(', ')}`
-            : instruction;
+        let autoTools = selectedTools;
+        if (autoIntent && instruction) {
+            const detected = detectIntent(instruction);
+            setIntentHint(detected.tools.length ? detected.tools.join(', ') : '');
+            setCreateType(detected.createType);
+            autoTools = applyIntentTools(detected);
+        }
+
+        const pluginList = selectedPluginTools.length
+            ? `\n\nPlugins: ${selectedPluginTools.join(', ')}`
+            : '';
+
+        const fullInstruction = autoTools.length
+            ? `${instruction}\n\nTools: ${autoTools.join(', ')}${pluginList}`
+            : `${instruction}${pluginList}`;
 
         let activeConversationId = conversationId;
         if (!activeConversationId) {
@@ -1395,7 +1534,90 @@ function StudioApp() {
                         src={`${adminBase}admin.php`}
                     />
                 ) : workspaceMode === 'tools' ? (
-                    <div className="ai-studio-workspace-empty">{__('Tools panel (coming soon)', 'ai-gateway')}</div>
+                    <div className="ai-studio-workspace-panel">
+                        <h3>{__('Plugin manager', 'ai-gateway')}</h3>
+                        <div className="ai-studio-field">
+                            <span>{__('Search wp.org', 'ai-gateway')}</span>
+                            <div className="ai-studio-chat-tools-row">
+                                <input
+                                    className="ai-studio-input"
+                                    value={pluginSearchQuery}
+                                    onChange={(event) => setPluginSearchQuery(event.target.value)}
+                                    placeholder={__('Plugin name or keyword', 'ai-gateway')}
+                                />
+                                <button
+                                    className="ai-studio-button secondary"
+                                    onClick={searchPlugins}
+                                    disabled={isPluginBusy}
+                                >
+                                    {__('Search', 'ai-gateway')}
+                                </button>
+                            </div>
+                        </div>
+                        {pluginSearchResults.length > 0 && (
+                            <div className="ai-studio-workflow-versions">
+                                {pluginSearchResults.map((plugin) => (
+                                    <div key={plugin.slug} className="ai-studio-workflow-version">
+                                        <div>
+                                            <div className="ai-studio-workflow-version-title">{plugin.name}</div>
+                                            <div className="ai-studio-workflow-version-meta">
+                                                {plugin.description}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="ai-studio-button secondary tiny"
+                                            onClick={() => installPlugin(plugin.slug)}
+                                            disabled={isPluginBusy}
+                                        >
+                                            {__('Install', 'ai-gateway')}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <div className="ai-studio-field">
+                            <span>{__('Installed plugins', 'ai-gateway')}</span>
+                        </div>
+                        <div className="ai-studio-workflow-versions">
+                            {pluginList.map((plugin) => (
+                                <div key={plugin.file} className="ai-studio-workflow-version">
+                                    <div>
+                                        <div className="ai-studio-workflow-version-title">{plugin.name}</div>
+                                        <div className="ai-studio-workflow-version-meta">
+                                            {plugin.version} {plugin.active ? __('(active)', 'ai-gateway') : ''}
+                                        </div>
+                                    </div>
+                                    <div className="ai-studio-workflow-node-actions">
+                                        {plugin.active ? (
+                                            <button
+                                                className="ai-studio-button secondary tiny"
+                                                onClick={() => deactivatePlugin(plugin.file)}
+                                                disabled={isPluginBusy}
+                                            >
+                                                {__('Deactivate', 'ai-gateway')}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                className="ai-studio-button secondary tiny"
+                                                onClick={() => activatePlugin(plugin.file)}
+                                                disabled={isPluginBusy}
+                                            >
+                                                {__('Activate', 'ai-gateway')}
+                                            </button>
+                                        )}
+                                        <button
+                                            className="ai-studio-button secondary tiny"
+                                            onClick={() => deletePlugin(plugin.file)}
+                                            disabled={isPluginBusy}
+                                        >
+                                            {__('Delete', 'ai-gateway')}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {pluginActionStatus && <div className="ai-studio-sidebar-empty">{pluginActionStatus}</div>}
+                    </div>
                 ) : workspaceMode === 'upload' ? (
                     <div className="ai-studio-workspace-panel">
                         <h3>{__('Upload image', 'ai-gateway')}</h3>
@@ -1604,6 +1826,10 @@ function StudioApp() {
                             onClick={async () => {
                                 setEditorStatus('');
                                 try {
+                                    const confirmText = publishAt ? 'Schedule this content?' : 'Publish this content now?';
+                                    if (!window.confirm(confirmText)) {
+                                        return;
+                                    }
                                     const status = publishAt ? 'future' : 'publish';
                                     const date = publishAt ? new Date(publishAt).toISOString() : null;
                                     const targetId = draftId || updatePostId;
@@ -1745,6 +1971,10 @@ function StudioApp() {
                             onClick={async () => {
                                 setEditorStatus('');
                                 try {
+                                    const confirmText = publishAt ? 'Schedule this content?' : 'Publish this content now?';
+                                    if (!window.confirm(confirmText)) {
+                                        return;
+                                    }
                                     const status = publishAt ? 'future' : 'publish';
                                     const date = publishAt ? new Date(publishAt).toISOString() : null;
                                     const targetId = draftId || updatePostId;
