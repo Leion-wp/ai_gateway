@@ -34,6 +34,16 @@ const normalizeSchema = (schema) =>
 const WORKFLOW_NODE_WIDTH = 240;
 const WORKFLOW_NODE_HEIGHT = 140;
 
+const INTENT_TOOL_MAP = [
+    { match: /seo|keywords|rank\s*math|yoast/i, tools: ['SEO'] },
+    { match: /rewrite|rephrase|improve|ameliore|améliore|reformule/i, tools: ['Rewrite'] },
+    { match: /outline|plan|structure/i, tools: ['Outline'] },
+    { match: /summary|summarize|resume|résume/i, tools: ['Summarize'] },
+    { match: /ui|design|layout|dark\s*mode/i, tools: ['UI Changer', 'UI Builder'] },
+    { match: /faq/i, tools: ['FAQ Builder'] },
+    { match: /cta|call to action/i, tools: ['CTA Builder'] },
+];
+
 const createNodeId = () => `node_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
 const normalizeWorkflowNodes = (nodes) =>
@@ -90,6 +100,13 @@ function StudioApp() {
     const [injectMode, setInjectMode] = useState('append');
     const [createType, setCreateType] = useState('article');
     const [chatToolStatus, setChatToolStatus] = useState('');
+    const [autoIntent, setAutoIntent] = useState(true);
+    const [intentHint, setIntentHint] = useState('');
+    const [pluginTools, setPluginTools] = useState([]);
+    const [selectedPluginTools, setSelectedPluginTools] = useState([]);
+    const [updatePostType, setUpdatePostType] = useState('article');
+    const [updatePostId, setUpdatePostId] = useState('');
+    const [publishAt, setPublishAt] = useState('');
     const [errorLogs, setErrorLogs] = useState([]);
     const [draftId, setDraftId] = useState(0);
     const [previewUrl, setPreviewUrl] = useState('');
@@ -146,6 +163,31 @@ function StudioApp() {
         setInputs(defaults);
     };
 
+    const detectIntent = (text) => {
+        const payload = text || '';
+        const matchedTools = INTENT_TOOL_MAP.filter((item) => item.match.test(payload))
+            .flatMap((item) => item.tools);
+        const create = /page|landing|homepage|accueil/i.test(payload) ? 'page' : 'article';
+        const intent =
+            /publish|post|article|page|create|ecrire|écrire/i.test(payload) ? 'create' : 'chat';
+        return {
+            intent,
+            createType: create,
+            tools: [...new Set(matchedTools)],
+        };
+    };
+
+    const applyIntentTools = (intent) => {
+        if (!intent?.tools?.length) {
+            return selectedTools;
+        }
+        const available = agentTools.length ? agentTools : [];
+        const merged = [...new Set([...selectedTools, ...intent.tools])];
+        const filtered = available.length ? merged.filter((tool) => available.includes(tool)) : merged;
+        setSelectedTools(filtered);
+        return filtered;
+    };
+
     const getConversationName = () => {
         const current = conversations.find((item) => item.id === conversationId);
         return current?.name || 'Draft';
@@ -189,6 +231,28 @@ function StudioApp() {
             );
         }
         return data;
+    };
+
+    const updatePostContent = async (type, postId, title, content, status, date) => {
+        if (!postId) {
+            throw new Error('Post ID required.');
+        }
+        const path = type === 'page' ? `/wp/v2/pages/${postId}` : `/wp/v2/posts/${postId}`;
+        const payload = { content };
+        if (title) {
+            payload.title = title;
+        }
+        if (status) {
+            payload.status = status;
+        }
+        if (date) {
+            payload.date = date;
+        }
+        return apiFetch({
+            path,
+            method: 'POST',
+            data: payload,
+        });
     };
 
     const injectChatToEditor = () => {
@@ -238,6 +302,35 @@ function StudioApp() {
         }
     };
 
+    const updatePostFromChat = async () => {
+        const content = getLastChatContent();
+        if (!content) {
+            logError('No chat content to update post.');
+            return;
+        }
+        if (!updatePostId) {
+            logError('Post ID is required.');
+            return;
+        }
+        setChatToolStatus('');
+        try {
+            await updatePostContent(
+                updatePostType,
+                Number(updatePostId),
+                editorTitle,
+                content
+            );
+            setChatToolStatus(`Post updated: #${updatePostId}`);
+            setPreviewUrl(
+                updatePostType === 'page'
+                    ? `${window.location.origin}/?page_id=${updatePostId}&preview=true`
+                    : `${window.location.origin}/?p=${updatePostId}&preview=true`
+            );
+        } catch (err) {
+            setChatToolStatus(err.message || 'Failed to update post.');
+        }
+    };
+
     useEffect(() => {
         if (agents.length) {
             return;
@@ -269,6 +362,39 @@ function StudioApp() {
             mounted = false;
         };
     }, [agents.length]);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadPlugins = async () => {
+            try {
+                const data = await apiFetch({ path: '/ai/v1/plugins', method: 'GET' });
+                if (!mounted) {
+                    return;
+                }
+                const list = Array.isArray(data) ? data : [];
+                const normalized = list
+                    .map((item) => ({
+                        name: item.name,
+                        active: Boolean(item.active),
+                    }))
+                    .filter((item) =>
+                        /yoast|rank\s*math|ewww/i.test(item.name || '')
+                    )
+                    .map((item) => ({
+                        ...item,
+                        tool: item.name,
+                    }));
+                setPluginTools(normalized);
+            } catch (err) {
+                logError(err.message || 'Failed to load plugins.');
+            }
+        };
+
+        loadPlugins();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     useEffect(() => {
         resetInputs();
@@ -494,9 +620,21 @@ function StudioApp() {
         setIsTyping(true);
         setError('');
 
-        const fullInstruction = selectedTools.length
-            ? `${instruction}\n\nTools: ${selectedTools.join(', ')}`
-            : instruction;
+        let autoTools = selectedTools;
+        if (autoIntent && instruction) {
+            const detected = detectIntent(instruction);
+            setIntentHint(detected.tools.length ? detected.tools.join(', ') : '');
+            setCreateType(detected.createType);
+            autoTools = applyIntentTools(detected);
+        }
+
+        const pluginList = selectedPluginTools.length
+            ? `\n\nPlugins: ${selectedPluginTools.join(', ')}`
+            : '';
+
+        const fullInstruction = autoTools.length
+            ? `${instruction}\n\nTools: ${autoTools.join(', ')}${pluginList}`
+            : `${instruction}${pluginList}`;
 
         let activeConversationId = conversationId;
         if (!activeConversationId) {
@@ -985,6 +1123,30 @@ function StudioApp() {
                         </label>
                     ))}
                 </div>
+                {pluginTools.length > 0 && (
+                    <div className="ai-studio-sidebar-section">
+                        <div className="ai-studio-sidebar-title">{__('Plugin tools', 'ai-gateway')}</div>
+                        {pluginTools.map((plugin) => (
+                            <label key={plugin.tool} className="ai-studio-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedPluginTools.includes(plugin.tool)}
+                                    disabled={!plugin.active}
+                                    onChange={(event) => {
+                                        const checked = event.target.checked;
+                                        setSelectedPluginTools((prev) => {
+                                            if (checked) {
+                                                return [...prev, plugin.tool];
+                                            }
+                                            return prev.filter((item) => item !== plugin.tool);
+                                        });
+                                    }}
+                                />
+                                {plugin.name} {plugin.active ? '' : __('(inactive)', 'ai-gateway')}
+                            </label>
+                        ))}
+                    </div>
+                )}
                 <div className="ai-studio-sidebar-section">
                     <div className="ai-studio-sidebar-title">{__('Settings', 'ai-gateway')}</div>
                     <button
@@ -1148,6 +1310,14 @@ function StudioApp() {
                             />
                             {__('Use chain', 'ai-gateway')}
                         </label>
+                        <label className="ai-studio-checkbox">
+                            <input
+                                type="checkbox"
+                                checked={autoIntent}
+                                onChange={(event) => setAutoIntent(event.target.checked)}
+                            />
+                            {__('Auto intent', 'ai-gateway')}
+                        </label>
                     </div>
                     <div className="ai-studio-chat-tools">
                         <div className="ai-studio-sidebar-title">{__('Chat tools', 'ai-gateway')}</div>
@@ -1178,6 +1348,30 @@ function StudioApp() {
                                 {__('Create from chat', 'ai-gateway')}
                             </button>
                         </div>
+                        <div className="ai-studio-chat-tools-row">
+                            <select
+                                className="ai-studio-select"
+                                value={updatePostType}
+                                onChange={(event) => setUpdatePostType(event.target.value)}
+                            >
+                                <option value="article">{__('Update article', 'ai-gateway')}</option>
+                                <option value="page">{__('Update page', 'ai-gateway')}</option>
+                            </select>
+                            <input
+                                className="ai-studio-input"
+                                value={updatePostId}
+                                onChange={(event) => setUpdatePostId(event.target.value)}
+                                placeholder={__('Post ID', 'ai-gateway')}
+                            />
+                            <button className="ai-studio-button secondary" onClick={updatePostFromChat}>
+                                {__('Update from chat', 'ai-gateway')}
+                            </button>
+                        </div>
+                        {intentHint && autoIntent && (
+                            <div className="ai-studio-sidebar-empty">
+                                {__('Intent tools:', 'ai-gateway')} {intentHint}
+                            </div>
+                        )}
                         {chatToolStatus && <div className="ai-studio-sidebar-empty">{chatToolStatus}</div>}
                     </div>
                 </div>
@@ -1339,6 +1533,15 @@ function StudioApp() {
                                 onChange={(event) => setEditorContent(event.target.value)}
                             />
                         </label>
+                        <label className="ai-studio-field">
+                            <span>{__('Publish at (optional)', 'ai-gateway')}</span>
+                            <input
+                                className="ai-studio-input"
+                                type="datetime-local"
+                                value={publishAt}
+                                onChange={(event) => setPublishAt(event.target.value)}
+                            />
+                        </label>
                         {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
                         {draftId > 0 && (
                             <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
@@ -1396,6 +1599,39 @@ function StudioApp() {
                                 {__('Update draft', 'ai-gateway')}
                             </button>
                         )}
+                        <button
+                            className="ai-studio-button"
+                            onClick={async () => {
+                                setEditorStatus('');
+                                try {
+                                    const status = publishAt ? 'future' : 'publish';
+                                    const date = publishAt ? new Date(publishAt).toISOString() : null;
+                                    const targetId = draftId || updatePostId;
+                                    if (!targetId) {
+                                        setEditorStatus('No draft/post selected.');
+                                        return;
+                                    }
+                                    await updatePostContent(
+                                        editorType,
+                                        Number(targetId),
+                                        editorTitle,
+                                        editorContent,
+                                        status,
+                                        date
+                                    );
+                                    setEditorStatus(publishAt ? 'Scheduled.' : 'Published.');
+                                    setPreviewUrl(
+                                        editorType === 'page'
+                                            ? `${window.location.origin}/?page_id=${targetId}&preview=true`
+                                            : `${window.location.origin}/?p=${targetId}&preview=true`
+                                    );
+                                } catch (err) {
+                                    setEditorStatus(err.message || 'Failed to publish.');
+                                }
+                            }}
+                        >
+                            {publishAt ? __('Schedule', 'ai-gateway') : __('Publish now', 'ai-gateway')}
+                        </button>
                         {previewUrl && (
                             <button
                                 className="ai-studio-button secondary"
@@ -1429,19 +1665,28 @@ function StudioApp() {
                                     onChange={(event) => setEditorTitle(event.target.value)}
                                 />
                             </label>
-                            <label className="ai-studio-field">
-                                <span>{__('Content', 'ai-gateway')}</span>
-                                <textarea
-                                    className="ai-studio-textarea editor"
-                                    rows="8"
-                                    value={editorContent}
-                                    onChange={(event) => setEditorContent(event.target.value)}
-                                />
-                            </label>
-                            {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
-                            {draftId > 0 && (
-                                <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
-                            )}
+                        <label className="ai-studio-field">
+                            <span>{__('Content', 'ai-gateway')}</span>
+                            <textarea
+                                className="ai-studio-textarea editor"
+                                rows="8"
+                                value={editorContent}
+                                onChange={(event) => setEditorContent(event.target.value)}
+                            />
+                        </label>
+                        <label className="ai-studio-field">
+                            <span>{__('Publish at (optional)', 'ai-gateway')}</span>
+                            <input
+                                className="ai-studio-input"
+                                type="datetime-local"
+                                value={publishAt}
+                                onChange={(event) => setPublishAt(event.target.value)}
+                            />
+                        </label>
+                        {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
+                        {draftId > 0 && (
+                            <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
+                        )}
                             <button
                                 className="ai-studio-button"
                                 onClick={async () => {
@@ -1471,30 +1716,63 @@ function StudioApp() {
                             >
                                 {__('Use last assistant', 'ai-gateway')}
                             </button>
-                            {draftId > 0 && (
-                                <button
-                                    className="ai-studio-button secondary"
-                                    onClick={async () => {
-                                        setEditorStatus('');
-                                        try {
-                                            const path = editorType === 'page' ? `/wp/v2/pages/${draftId}` : `/wp/v2/posts/${draftId}`;
-                                            await apiFetch({
-                                                path,
-                                                method: 'POST',
-                                                data: {
-                                                    title: `${editorTitle || 'Draft'} (ID: ${draftId})`,
-                                                    content: editorContent,
-                                                },
-                                            });
-                                            setEditorStatus('Draft updated.');
-                                        } catch (err) {
-                                            setEditorStatus(err.message || 'Failed to update draft.');
-                                        }
-                                    }}
-                                >
-                                    {__('Update draft', 'ai-gateway')}
-                                </button>
-                            )}
+                        {draftId > 0 && (
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={async () => {
+                                    setEditorStatus('');
+                                    try {
+                                        const path = editorType === 'page' ? `/wp/v2/pages/${draftId}` : `/wp/v2/posts/${draftId}`;
+                                        await apiFetch({
+                                            path,
+                                            method: 'POST',
+                                            data: {
+                                                title: `${editorTitle || 'Draft'} (ID: ${draftId})`,
+                                                content: editorContent,
+                                            },
+                                        });
+                                        setEditorStatus('Draft updated.');
+                                    } catch (err) {
+                                        setEditorStatus(err.message || 'Failed to update draft.');
+                                    }
+                                }}
+                            >
+                                {__('Update draft', 'ai-gateway')}
+                            </button>
+                        )}
+                        <button
+                            className="ai-studio-button"
+                            onClick={async () => {
+                                setEditorStatus('');
+                                try {
+                                    const status = publishAt ? 'future' : 'publish';
+                                    const date = publishAt ? new Date(publishAt).toISOString() : null;
+                                    const targetId = draftId || updatePostId;
+                                    if (!targetId) {
+                                        setEditorStatus('No draft/post selected.');
+                                        return;
+                                    }
+                                    await updatePostContent(
+                                        editorType,
+                                        Number(targetId),
+                                        editorTitle,
+                                        editorContent,
+                                        status,
+                                        date
+                                    );
+                                    setEditorStatus(publishAt ? 'Scheduled.' : 'Published.');
+                                    setPreviewUrl(
+                                        editorType === 'page'
+                                            ? `${window.location.origin}/?page_id=${targetId}&preview=true`
+                                            : `${window.location.origin}/?p=${targetId}&preview=true`
+                                    );
+                                } catch (err) {
+                                    setEditorStatus(err.message || 'Failed to publish.');
+                                }
+                            }}
+                        >
+                            {publishAt ? __('Schedule', 'ai-gateway') : __('Publish now', 'ai-gateway')}
+                        </button>
                         </div>
                         <div className="ai-studio-split-panel">
                             <h3>{__('Preview', 'ai-gateway')}</h3>

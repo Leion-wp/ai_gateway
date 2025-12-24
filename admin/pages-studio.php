@@ -62,6 +62,7 @@ function ai_gateway_render_studio_admin_page() {
         .ai-studio-admin .ai-studio-actions { display: flex; gap: 12px; }
         .ai-studio-admin .ai-studio-chat-tools { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #262b36; border-radius: 12px; background: #0f1115; }
         .ai-studio-admin .ai-studio-chat-tools-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .ai-studio-admin .ai-studio-chat-tools-row .ai-studio-input { max-width: 160px; }
         .ai-studio-admin .ai-studio-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9ca3af; }
         .ai-studio-admin .ai-studio-button { background: #3b82f6; color: #ffffff; border: none; padding: 10px 16px; border-radius: 12px; cursor: pointer; }
         .ai-studio-admin .ai-studio-button.secondary { background: #1f2430; color: #e5e7eb; border: 1px solid #2c313c; }

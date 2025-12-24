@@ -27,8 +27,17 @@ AI Gateway is a local-first WordPress plugin that connects Gutenberg to Ollama (
 - Custom AI agents (model, system prompt, inputs, MCP endpoint)
 - Gutenberg sidebar with AI assistant and native tools
 - Tool permissions per agent (checkboxes)
+- AI Studio app (chat + editor + workflow + preview)
 - REST API for agents, runs, media import, and plugin actions
 - Admin pages for agents, settings, and plugins
+
+## AI Studio (ChatGPT-style workspace)
+- Chat with streaming + conversation history
+- Inject chat into editor (append/replace/section)
+- Create articles/pages from chat (draft + preview)
+- Update posts by ID and publish/schedule
+- Workflow canvas (node-based, sequential execution)
+- Admin iframe inside Studio (no context switching)
 
 ## Quick start
 1. Upload the plugin folder to `wp-content/plugins/ai-gateway`
@@ -78,10 +87,23 @@ Base: `/wp-json/ai/v1`
 - `GET /plugins`
 - `POST /plugins/activate`
 - `POST /plugins/deactivate`
+- `GET /projects`
+- `POST /projects`
+- `PUT /projects/{id}`
+- `DELETE /projects/{id}`
+- `GET /conversations`
+- `POST /conversations`
+- `GET /conversations/{id}`
+- `PUT /conversations/{id}`
+- `DELETE /conversations/{id}`
+- `POST /conversations/{id}/messages`
+- `POST /conversations/{id}/draft`
+- `GET /conversations/{id}/workflow`
+- `POST /conversations/{id}/workflow`
 
 ## Roadmap
 - v2.1: tools per agent, plugins admin, sidebar native tools
-- v2.2: workflows, presets, logs, export/import
+- v2.2: AI Studio (chat, editor, workflow), presets, logs, export/import
 - v3: marketplace + connectors
 
 ## License
