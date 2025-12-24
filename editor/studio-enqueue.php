@@ -79,6 +79,8 @@ function ai_gateway_enqueue_studio_admin_assets($hook) {
         return;
     }
 
+    wp_enqueue_media();
+
     $script_path = AI_GATEWAY_PLUGIN_DIR . 'build/studio.js';
     if (!file_exists($script_path)) {
         return;

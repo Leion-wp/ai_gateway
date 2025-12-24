@@ -149,7 +149,7 @@ function ai_gateway_call_openai_compatible($base_url, $api_key, $model, $system_
     }
 
     $response = wp_remote_post(rtrim($base_url, '/') . '/chat/completions', [
-        'timeout' => 30,
+        'timeout' => 120,
         'headers' => $headers,
         'body' => wp_json_encode($payload),
     ]);
@@ -189,7 +189,7 @@ function ai_gateway_call_anthropic($api_key, $model, $system_prompt, $user_promp
     }
 
     $response = wp_remote_post('https://api.anthropic.com/v1/messages', [
-        'timeout' => 30,
+        'timeout' => 120,
         'headers' => [
             'Content-Type' => 'application/json',
             'x-api-key' => $api_key,
@@ -240,7 +240,7 @@ function ai_gateway_call_azure($model, $system_prompt, $user_prompt, $options) {
     $url = rtrim($endpoint, '/') . '/openai/deployments/' . rawurlencode($deployment) . '/chat/completions?api-version=2024-02-15-preview';
 
     $response = wp_remote_post($url, [
-        'timeout' => 30,
+        'timeout' => 120,
         'headers' => [
             'Content-Type' => 'application/json',
             'api-key' => $api_key,

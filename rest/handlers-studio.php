@@ -169,6 +169,62 @@ function ai_gateway_rest_append_message($request) {
     return $data;
 }
 
+function ai_gateway_rest_update_conversation_draft($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $params = ai_gateway_get_json_params($request);
+    $messages = isset($params['messages']) && is_array($params['messages']) ? $params['messages'] : [];
+    if (empty($messages)) {
+        return ['status' => 'skipped'];
+    }
+
+    $lines = [];
+    foreach ($messages as $message) {
+        if (!is_array($message)) {
+            continue;
+        }
+        $role = isset($message['role']) ? strtoupper(sanitize_text_field($message['role'])) : 'USER';
+        $content = isset($message['content']) ? sanitize_textarea_field($message['content']) : '';
+        if ($content === '') {
+            continue;
+        }
+        $lines[] = $role . ': ' . $content;
+    }
+
+    $content = implode("\n\n", $lines);
+    if ($content === '') {
+        return ['status' => 'skipped'];
+    }
+
+    $draft_id = (int) get_post_meta($conversation_id, 'draft_post_id', true);
+    $title = 'Chat: ' . $post->post_title;
+
+    if ($draft_id) {
+        wp_update_post([
+            'ID' => $draft_id,
+            'post_title' => $title,
+            'post_content' => $content,
+            'post_status' => 'draft',
+        ]);
+    } else {
+        $draft_id = wp_insert_post([
+            'post_title' => $title,
+            'post_content' => $content,
+            'post_status' => 'draft',
+            'post_type' => 'post',
+        ], true);
+        if (!is_wp_error($draft_id)) {
+            update_post_meta($conversation_id, 'draft_post_id', (int) $draft_id);
+        }
+    }
+
+    return ['status' => 'ok', 'draft_id' => (int) $draft_id];
+}
+
 function ai_gateway_rest_update_conversation($request) {
     $conversation_id = absint($request['id']);
     $post = get_post($conversation_id);
@@ -238,4 +294,52 @@ function ai_gateway_rest_delete_project($request) {
     }
     wp_delete_post($project_id, true);
     return ['status' => 'deleted', 'id' => $project_id];
+}
+
+function ai_gateway_rest_get_workflow($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $workflow = get_post_meta($conversation_id, 'workflow', true);
+    if (!is_array($workflow)) {
+        $workflow = [];
+    }
+    $versions = get_post_meta($conversation_id, 'workflow_versions', true);
+    if (!is_array($versions)) {
+        $versions = [];
+    }
+    return ['workflow' => $workflow, 'versions' => $versions];
+}
+
+function ai_gateway_rest_update_workflow($request) {
+    $conversation_id = absint($request['id']);
+    $post = get_post($conversation_id);
+    if (!$post || $post->post_type !== AI_GATEWAY_CONVERSATION_POST_TYPE) {
+        return new WP_Error('not_found', 'Conversation not found', ['status' => 404]);
+    }
+
+    $params = ai_gateway_get_json_params($request);
+    $workflow = isset($params['workflow']) && is_array($params['workflow']) ? $params['workflow'] : [];
+    $save_version = !empty($params['save_version']);
+    $note = isset($params['note']) ? sanitize_text_field($params['note']) : '';
+    update_post_meta($conversation_id, 'workflow', $workflow);
+
+    $versions = get_post_meta($conversation_id, 'workflow_versions', true);
+    if (!is_array($versions)) {
+        $versions = [];
+    }
+    if ($save_version) {
+        array_unshift($versions, [
+            'saved_at' => gmdate('c'),
+            'note' => $note,
+            'workflow' => $workflow,
+        ]);
+        $versions = array_slice($versions, 0, 20);
+        update_post_meta($conversation_id, 'workflow_versions', $versions);
+    }
+
+    return ['workflow' => $workflow, 'versions' => $versions];
 }

@@ -2,7 +2,7 @@ import { registerBlockType } from '@wordpress/blocks';
 import { useBlockProps } from '@wordpress/block-editor';
 import apiFetch from '@wordpress/api-fetch';
 import { __ } from '@wordpress/i18n';
-import { useEffect, useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useRef, useState } from '@wordpress/element';
 
 const settings = window.AIGatewaySettings || { restUrl: '', nonce: '', agents: [] };
 
@@ -31,6 +31,24 @@ const normalizeSchema = (schema) =>
         })
         .filter(Boolean);
 
+const WORKFLOW_NODE_WIDTH = 240;
+const WORKFLOW_NODE_HEIGHT = 140;
+
+const createNodeId = () => `node_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+const normalizeWorkflowNodes = (nodes) =>
+    (Array.isArray(nodes) ? nodes : []).map((node, index) => {
+        const fallbackX = 40 + index * 40;
+        const fallbackY = 40 + index * 100;
+        return {
+            id: node.id || createNodeId(),
+            type: node.type || 'run_agent',
+            x: Number.isFinite(node.x) ? node.x : fallbackX,
+            y: Number.isFinite(node.y) ? node.y : fallbackY,
+            ...node,
+        };
+    });
+
 function StudioApp() {
     const [agents, setAgents] = useState(settings.agents || []);
     const [agentId, setAgentId] = useState(settings.studioDefaultAgent || settings.agents?.[0]?.id || 0);
@@ -44,16 +62,21 @@ function StudioApp() {
     const [isBusy, setIsBusy] = useState(false);
     const [error, setError] = useState('');
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [workspaceMode, setWorkspaceMode] = useState('empty');
+    const [workspaceMode, setWorkspaceMode] = useState(
+        window.localStorage.getItem('ai_gateway_workspace_mode') || 'chat'
+    );
     const [activeConversationActions, setActiveConversationActions] = useState(null);
     const [moveProjectId, setMoveProjectId] = useState(0);
     const [moveProjectName, setMoveProjectName] = useState('');
     const [showPlusMenu, setShowPlusMenu] = useState(false);
-    const [workspaceWidth, setWorkspaceWidth] = useState(360);
+    const [workspaceWidth, setWorkspaceWidth] = useState(
+        Number(window.localStorage.getItem('ai_gateway_workspace_width')) || 360
+    );
     const [isDragging, setIsDragging] = useState(false);
     const [selectedTools, setSelectedTools] = useState([]);
     const [uploadUrl, setUploadUrl] = useState('');
     const [uploadStatus, setUploadStatus] = useState('');
+    const [selectedMedia, setSelectedMedia] = useState(null);
     const [chainAgents, setChainAgents] = useState([]);
     const [useChain, setUseChain] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
@@ -64,6 +87,15 @@ function StudioApp() {
     const [editorTitle, setEditorTitle] = useState('');
     const [editorContent, setEditorContent] = useState('');
     const [editorStatus, setEditorStatus] = useState('');
+    const [errorLogs, setErrorLogs] = useState([]);
+    const [draftId, setDraftId] = useState(0);
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [workflowNodes, setWorkflowNodes] = useState([]);
+    const [workflowStatus, setWorkflowStatus] = useState('');
+    const [workflowVersions, setWorkflowVersions] = useState([]);
+    const [workflowNote, setWorkflowNote] = useState('');
+    const [nodeDrag, setNodeDrag] = useState(null);
+    const workflowNodesRef = useRef([]);
 
     const saveMessage = async (conversation, role, content) => {
         if (!conversation) {
@@ -76,8 +108,16 @@ function StudioApp() {
                 data: { role, content },
             });
         } catch (err) {
-            setError(err.message || 'Failed to save message.');
+            logError(err.message || 'Failed to save message.');
         }
+    };
+
+    const logError = (message) => {
+        setError(message);
+        setErrorLogs((prev) => [
+            { message, time: new Date().toISOString() },
+            ...prev.slice(0, 9),
+        ]);
     };
 
     const agent = useMemo(
@@ -124,7 +164,7 @@ function StudioApp() {
                 setAgentId(selected?.id || list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load agents.');
+                    logError(err.message || 'Failed to load agents.');
                 }
             }
         };
@@ -160,6 +200,50 @@ function StudioApp() {
     }, [isDragging]);
 
     useEffect(() => {
+        if (!nodeDrag) {
+            return;
+        }
+        const handleMove = (event) => {
+            const canvas = document.querySelector('.ai-studio-workflow-canvas');
+            if (!canvas) {
+                return;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const nextX = event.clientX - rect.left - nodeDrag.offsetX;
+            const nextY = event.clientY - rect.top - nodeDrag.offsetY;
+            setWorkflowNodes((prev) =>
+                prev.map((node) =>
+                    node.id === nodeDrag.id
+                        ? {
+                              ...node,
+                              x: Math.max(20, nextX),
+                              y: Math.max(20, nextY),
+                          }
+                        : node
+                )
+            );
+        };
+        const handleUp = () => {
+            setNodeDrag(null);
+            saveWorkflow(workflowNodesRef.current);
+        };
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+        };
+    }, [nodeDrag]);
+
+    useEffect(() => {
+        window.localStorage.setItem('ai_gateway_workspace_mode', workspaceMode);
+    }, [workspaceMode]);
+
+    useEffect(() => {
+        window.localStorage.setItem('ai_gateway_workspace_width', String(workspaceWidth));
+    }, [workspaceWidth]);
+
+    useEffect(() => {
         let mounted = true;
         const loadProjects = async () => {
             try {
@@ -182,7 +266,7 @@ function StudioApp() {
                 setProjectId(list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load projects.');
+                    logError(err.message || 'Failed to load projects.');
                 }
             }
         };
@@ -212,7 +296,7 @@ function StudioApp() {
                 setConversationId(list[0]?.id || 0);
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load conversations.');
+                    logError(err.message || 'Failed to load conversations.');
                 }
             }
         };
@@ -240,7 +324,7 @@ function StudioApp() {
                 }
             } catch (err) {
                 if (mounted) {
-                    setError(err.message || 'Failed to load conversation.');
+                    logError(err.message || 'Failed to load conversation.');
                 }
             }
         };
@@ -250,6 +334,37 @@ function StudioApp() {
             mounted = false;
         };
     }, [conversationId]);
+
+    useEffect(() => {
+        if (!conversationId) {
+            setWorkflowNodes([]);
+            return;
+        }
+        let mounted = true;
+        const loadWorkflow = async () => {
+            try {
+                const data = await apiFetch({
+                    path: `/ai/v1/conversations/${conversationId}/workflow`,
+                    method: 'GET',
+                });
+                if (mounted) {
+                    setWorkflowNodes(normalizeWorkflowNodes(data?.workflow));
+                    setWorkflowVersions(Array.isArray(data?.versions) ? data.versions : []);
+                }
+            } catch (err) {
+                logError(err.message || 'Failed to load workflow.');
+            }
+        };
+
+        loadWorkflow();
+        return () => {
+            mounted = false;
+        };
+    }, [conversationId]);
+
+    useEffect(() => {
+        workflowNodesRef.current = workflowNodes;
+    }, [workflowNodes]);
 
     const updateAssistant = (delta, done) => {
         setMessages((prev) => {
@@ -271,7 +386,7 @@ function StudioApp() {
 
     const runAgent = async () => {
         if (!agentId) {
-            setError('No agent selected.');
+            logError('No agent selected.');
             return;
         }
 
@@ -352,7 +467,7 @@ function StudioApp() {
                         try {
                             const data = JSON.parse(payload);
                             if (data.error) {
-                                setError(data.error);
+                                logError(data.error);
                                 return;
                             }
                             if (data.delta) {
@@ -364,7 +479,7 @@ function StudioApp() {
                                 setIsTyping(false);
                             }
                         } catch (err) {
-                            setError(err.message || 'Stream parse error.');
+                            logError(err.message || 'Stream parse error.');
                         }
                     });
                 });
@@ -381,14 +496,14 @@ function StudioApp() {
                     },
                 });
                 if (data?.error) {
-                    setError(data.error);
+                    logError(data.error);
                 } else {
                     const result = data?.mcp_response || data?.ollama_response || '';
                     updateAssistant(result, true);
                     saveMessage(activeConversationId, 'assistant', result);
                 }
             } catch (fallbackError) {
-                setError(fallbackError.message || err.message || 'Stream failed.');
+                logError(fallbackError.message || err.message || 'Stream failed.');
             }
         } finally {
             setIsBusy(false);
@@ -439,13 +554,119 @@ function StudioApp() {
                 saveMessage(activeConversationId, 'assistant', message);
             }
         } catch (err) {
-            setError(err.message || 'Chain failed.');
+            logError(err.message || 'Chain failed.');
         } finally {
             setIsBusy(false);
             setIsTyping(false);
             setInstruction('');
         }
     };
+
+    const saveWorkflow = async (nodes, options = {}) => {
+        if (!conversationId) {
+            return;
+        }
+        const payload = { workflow: nodes };
+        if (options.saveVersion) {
+            payload.save_version = true;
+            payload.note = options.note || '';
+        }
+        const data = await apiFetch({
+            path: `/ai/v1/conversations/${conversationId}/workflow`,
+            method: 'POST',
+            data: payload,
+        });
+        if (data?.versions) {
+            setWorkflowVersions(data.versions);
+        }
+    };
+
+    const runWorkflow = async () => {
+        if (!workflowNodes.length) {
+            logError('No workflow nodes.');
+            return;
+        }
+        setWorkflowStatus('Running...');
+        try {
+            let lastOutput = '';
+            for (const node of workflowNodes) {
+                if (node.type === 'run_agent') {
+                    const nodePrompt = node.prompt || instruction;
+                    const data = await apiFetch({
+                        path: '/ai/v1/run',
+                        method: 'POST',
+                        data: {
+                            agent_id: node.agentId,
+                            instruction: nodePrompt,
+                            inputs,
+                        },
+                    });
+                    lastOutput = data?.mcp_response || data?.ollama_response || '';
+                }
+                if (node.type === 'create_draft') {
+                    const path = node.postType === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
+                    const created = await apiFetch({
+                        path,
+                        method: 'POST',
+                        data: {
+                            title: node.title || 'Draft',
+                            content: lastOutput,
+                            status: 'draft',
+                        },
+                    });
+                    setDraftId(created?.id || 0);
+                    if (created?.id) {
+                        const title = `${node.title || 'Draft'} (ID: ${created.id})`;
+                        await apiFetch({
+                            path: `${path}/${created.id}`,
+                            method: 'POST',
+                            data: { title },
+                        });
+                        setPreviewUrl(
+                            node.postType === 'page'
+                                ? `${window.location.origin}/?page_id=${created.id}&preview=true`
+                                : `${window.location.origin}/?p=${created.id}&preview=true`
+                        );
+                    }
+                }
+                if (node.type === 'update_draft' && node.postId) {
+                    const path = node.postType === 'page' ? `/wp/v2/pages/${node.postId}` : `/wp/v2/posts/${node.postId}`;
+                    await apiFetch({
+                        path,
+                        method: 'POST',
+                        data: {
+                            content: lastOutput,
+                        },
+                    });
+                }
+                if (node.type === 'insert_image' && selectedMedia?.url) {
+                    lastOutput += `\n\n![image](${selectedMedia.url})`;
+                }
+            }
+            setWorkflowStatus('Done');
+        } catch (err) {
+            logError(err.message || 'Workflow failed.');
+            setWorkflowStatus('Failed');
+        }
+    };
+
+    useEffect(() => {
+        if (!conversationId || messages.length === 0) {
+            return;
+        }
+        const timer = setTimeout(async () => {
+            try {
+                await apiFetch({
+                    path: `/ai/v1/conversations/${conversationId}/draft`,
+                    method: 'POST',
+                    data: { messages },
+                });
+            } catch (err) {
+                logError(err.message || 'Failed to save draft.');
+            }
+        }, 1200);
+        return () => clearTimeout(timer);
+    }, [conversationId, messages]);
 
     const archiveConversation = async (id) => {
         await apiFetch({
@@ -494,6 +715,59 @@ function StudioApp() {
         }
     };
 
+    const workflowBounds = useMemo(() => {
+        const maxX = workflowNodes.reduce((acc, node) => Math.max(acc, node.x || 0), 0);
+        const maxY = workflowNodes.reduce((acc, node) => Math.max(acc, node.y || 0), 0);
+        return {
+            width: Math.max(520, maxX + WORKFLOW_NODE_WIDTH + 80),
+            height: Math.max(360, maxY + WORKFLOW_NODE_HEIGHT + 80),
+        };
+    }, [workflowNodes]);
+
+    const addWorkflowNode = (node) => {
+        const index = workflowNodes.length;
+        const next = [
+            ...workflowNodes,
+            {
+                id: createNodeId(),
+                x: 40 + index * 40,
+                y: 40 + index * 100,
+                ...node,
+            },
+        ];
+        setWorkflowNodes(next);
+        saveWorkflow(next);
+    };
+
+    const moveWorkflowNode = (index, direction) => {
+        const next = [...workflowNodes];
+        const target = index + direction;
+        if (target < 0 || target >= next.length) {
+            return;
+        }
+        const [moved] = next.splice(index, 1);
+        next.splice(target, 0, moved);
+        setWorkflowNodes(next);
+        saveWorkflow(next);
+    };
+
+    const startNodeDrag = (event, node) => {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        const canvas = event.currentTarget.closest('.ai-studio-workflow-canvas');
+        if (!canvas) {
+            return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        setNodeDrag({
+            id: node.id,
+            offsetX: event.clientX - rect.left - (node.x || 0),
+            offsetY: event.clientY - rect.top - (node.y || 0),
+        });
+    };
+
     return (
         <div className="ai-studio-app" style={{ gridTemplateColumns: `280px 1fr ${workspaceWidth}px` }}>
             <aside className="ai-studio-sidebar">
@@ -520,7 +794,7 @@ function StudioApp() {
                                 setProjectName(current?.name || '');
                             }}
                         >
-                            ⋯
+                            ...
                         </button>
                     </div>
                 </div>
@@ -557,7 +831,7 @@ function StudioApp() {
                                         setMoveProjectName('');
                                     }}
                                 >
-                                    ⋯
+                                    ...
                                 </button>
                             </div>
                         ))}
@@ -644,17 +918,24 @@ function StudioApp() {
                     <div className="ai-studio-topbar-right">
                         <span className="ai-studio-status-dot" />
                         <span>{__('Ollama: online', 'ai-gateway')}</span>
-                        <select
-                            className="ai-studio-select"
-                            value={workspaceMode}
-                            onChange={(event) => setWorkspaceMode(event.target.value)}
-                        >
-                            <option value="empty">{__('Chat', 'ai-gateway')}</option>
-                            <option value="editor">{__('Editor', 'ai-gateway')}</option>
-                            <option value="workflow">{__('Workflow', 'ai-gateway')}</option>
-                            <option value="preview">{__('Preview', 'ai-gateway')}</option>
-                            <option value="agents">{__('Agents', 'ai-gateway')}</option>
-                        </select>
+                        <div className="ai-studio-tabs">
+                            {[
+                            { id: 'chat', label: __('Chat', 'ai-gateway') },
+                            { id: 'editor', label: __('Editor', 'ai-gateway') },
+                            { id: 'split', label: __('Split', 'ai-gateway') },
+                            { id: 'workflow', label: __('Workflow', 'ai-gateway') },
+                                { id: 'preview', label: __('Preview', 'ai-gateway') },
+                                { id: 'agents', label: __('Agents', 'ai-gateway') },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    className={`ai-studio-tab ${workspaceMode === tab.id ? 'active' : ''}`}
+                                    onClick={() => setWorkspaceMode(tab.id)}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
                 <div className="ai-studio-chat">
@@ -670,6 +951,16 @@ function StudioApp() {
                         </div>
                     )}
                 </div>
+                {errorLogs.length > 0 && (
+                    <div className="ai-studio-error-log">
+                        <strong>{__('Errors', 'ai-gateway')}</strong>
+                        {errorLogs.map((item, index) => (
+                            <div key={index} className="ai-studio-error-item">
+                                {item.message}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {schema.length > 0 && (
                     <div className="ai-studio-inputs">
@@ -774,6 +1065,31 @@ function StudioApp() {
                 ) : workspaceMode === 'upload' ? (
                     <div className="ai-studio-workspace-panel">
                         <h3>{__('Upload image', 'ai-gateway')}</h3>
+                        <button
+                            className="ai-studio-button secondary"
+                            onClick={() => {
+                                if (!window.wp || !window.wp.media) {
+                                    logError('Media library not available.');
+                                    return;
+                                }
+                                const frame = window.wp.media({
+                                    title: 'Select image',
+                                    multiple: false,
+                                    library: { type: 'image' },
+                                });
+                                frame.on('select', () => {
+                                    const selection = frame.state().get('selection').first();
+                                    if (!selection) {
+                                        return;
+                                    }
+                                    const data = selection.toJSON();
+                                    setSelectedMedia({ id: data.id, url: data.url });
+                                });
+                                frame.open();
+                            }}
+                        >
+                            {__('Open Media Library', 'ai-gateway')}
+                        </button>
                         <input
                             className="ai-studio-input"
                             value={uploadUrl}
@@ -791,6 +1107,9 @@ function StudioApp() {
                                         data: { url: uploadUrl },
                                     });
                                     setUploadStatus(data?.url ? `Imported: ${data.url}` : 'Imported');
+                                    if (data?.url) {
+                                        setSelectedMedia({ id: data.attachment_id, url: data.url });
+                                    }
                                 } catch (err) {
                                     setUploadStatus(err.message || 'Upload failed.');
                                 }
@@ -798,6 +1117,29 @@ function StudioApp() {
                         >
                             {__('Import', 'ai-gateway')}
                         </button>
+                        {selectedMedia?.url && (
+                            <button
+                                className="ai-studio-button"
+                                onClick={async () => {
+                                    let activeConversationId = conversationId;
+                                    if (!activeConversationId) {
+                                        const created = await apiFetch({
+                                            path: '/ai/v1/conversations',
+                                            method: 'POST',
+                                            data: { name: 'Conversation', project_id: projectId },
+                                        });
+                                        activeConversationId = created.id;
+                                        setConversations((prev) => [created, ...prev]);
+                                        setConversationId(created.id);
+                                    }
+                                    const content = `![image](${selectedMedia.url})`;
+                                    setMessages((prev) => [...prev, { role: 'user', content }]);
+                                    saveMessage(activeConversationId, 'user', content);
+                                }}
+                            >
+                                {__('Insert into chat', 'ai-gateway')}
+                            </button>
+                        )}
                         {uploadStatus && <div className="ai-studio-sidebar-empty">{uploadStatus}</div>}
                     </div>
                 ) : workspaceMode === 'chain' ? (
@@ -858,6 +1200,9 @@ function StudioApp() {
                             />
                         </label>
                         {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
+                        {draftId > 0 && (
+                            <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
+                        )}
                         <button
                             className="ai-studio-button"
                             onClick={async () => {
@@ -874,6 +1219,20 @@ function StudioApp() {
                                         },
                                     });
                                     setEditorStatus(`Draft created: #${data.id}`);
+                                    setDraftId(data.id || 0);
+                                    if (data?.id) {
+                                        const title = `${editorTitle || 'Draft'} (ID: ${data.id})`;
+                                        await apiFetch({
+                                            path: `${path}/${data.id}`,
+                                            method: 'POST',
+                                            data: { title },
+                                        });
+                                        setPreviewUrl(
+                                            editorType === 'page'
+                                                ? `${window.location.origin}/?page_id=${data.id}&preview=true`
+                                                : `${window.location.origin}/?p=${data.id}&preview=true`
+                                        );
+                                    }
                                 } catch (err) {
                                     setEditorStatus(err.message || 'Failed to create draft.');
                                 }
@@ -881,11 +1240,413 @@ function StudioApp() {
                         >
                             {__('Create draft', 'ai-gateway')}
                         </button>
+                        <button
+                            className="ai-studio-button secondary"
+                            onClick={() => {
+                                const lastAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant');
+                                if (lastAssistant) {
+                                    setEditorContent(lastAssistant.content);
+                                }
+                            }}
+                        >
+                            {__('Use last assistant', 'ai-gateway')}
+                        </button>
+                        {draftId > 0 && (
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={async () => {
+                                    setEditorStatus('');
+                                    try {
+                                        const path = editorType === 'page' ? `/wp/v2/pages/${draftId}` : `/wp/v2/posts/${draftId}`;
+                                        await apiFetch({
+                                            path,
+                                            method: 'POST',
+                                            data: {
+                                                title: `${editorTitle || 'Draft'} (ID: ${draftId})`,
+                                                content: editorContent,
+                                            },
+                                        });
+                                        setEditorStatus('Draft updated.');
+                                    } catch (err) {
+                                        setEditorStatus(err.message || 'Failed to update draft.');
+                                    }
+                                }}
+                            >
+                                {__('Update draft', 'ai-gateway')}
+                            </button>
+                        )}
+                        {previewUrl && (
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => setWorkspaceMode('preview')}
+                            >
+                                {__('Open preview', 'ai-gateway')}
+                            </button>
+                        )}
+                    </div>
+                ) : workspaceMode === 'split' ? (
+                    <div className="ai-studio-workspace-panel split">
+                        <div className="ai-studio-split-panel">
+                            <h3>{__('Content editor', 'ai-gateway')}</h3>
+                            <label className="ai-studio-field">
+                                <span>{__('Type', 'ai-gateway')}</span>
+                                <select
+                                    className="ai-studio-select"
+                                    value={editorType}
+                                    onChange={(event) => setEditorType(event.target.value)}
+                                >
+                                    <option value="article">{__('Article', 'ai-gateway')}</option>
+                                    <option value="page">{__('Page', 'ai-gateway')}</option>
+                                    <option value="workflow">{__('Workflow', 'ai-gateway')}</option>
+                                </select>
+                            </label>
+                            <label className="ai-studio-field">
+                                <span>{__('Title', 'ai-gateway')}</span>
+                                <input
+                                    className="ai-studio-input"
+                                    value={editorTitle}
+                                    onChange={(event) => setEditorTitle(event.target.value)}
+                                />
+                            </label>
+                            <label className="ai-studio-field">
+                                <span>{__('Content', 'ai-gateway')}</span>
+                                <textarea
+                                    className="ai-studio-textarea editor"
+                                    rows="8"
+                                    value={editorContent}
+                                    onChange={(event) => setEditorContent(event.target.value)}
+                                />
+                            </label>
+                            {editorStatus && <div className="ai-studio-sidebar-empty">{editorStatus}</div>}
+                            {draftId > 0 && (
+                                <div className="ai-studio-sidebar-empty">{`Draft ID: ${draftId}`}</div>
+                            )}
+                            <button
+                                className="ai-studio-button"
+                                onClick={async () => {
+                                    setEditorStatus('');
+                                    try {
+                                        const path = editorType === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
+                                        const data = await apiFetch({
+                                            path,
+                                            method: 'POST',
+                                            data: {
+                                                title: editorTitle || 'Draft',
+                                                content: editorContent,
+                                                status: 'draft',
+                                            },
+                                        });
+                                        setEditorStatus(`Draft created: #${data.id}`);
+                                        setDraftId(data.id || 0);
+                                        if (data?.id) {
+                                            const title = `${editorTitle || 'Draft'} (ID: ${data.id})`;
+                                            await apiFetch({
+                                                path: `${path}/${data.id}`,
+                                                method: 'POST',
+                                                data: { title },
+                                            });
+                                            setPreviewUrl(
+                                                editorType === 'page'
+                                                    ? `${window.location.origin}/?page_id=${data.id}&preview=true`
+                                                    : `${window.location.origin}/?p=${data.id}&preview=true`
+                                            );
+                                        }
+                                    } catch (err) {
+                                        setEditorStatus(err.message || 'Failed to create draft.');
+                                    }
+                                }}
+                            >
+                                {__('Create draft', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => {
+                                    const lastAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant');
+                                    if (lastAssistant) {
+                                        setEditorContent(lastAssistant.content);
+                                    }
+                                }}
+                            >
+                                {__('Use last assistant', 'ai-gateway')}
+                            </button>
+                            {draftId > 0 && (
+                                <button
+                                    className="ai-studio-button secondary"
+                                    onClick={async () => {
+                                        setEditorStatus('');
+                                        try {
+                                            const path = editorType === 'page' ? `/wp/v2/pages/${draftId}` : `/wp/v2/posts/${draftId}`;
+                                            await apiFetch({
+                                                path,
+                                                method: 'POST',
+                                                data: {
+                                                    title: `${editorTitle || 'Draft'} (ID: ${draftId})`,
+                                                    content: editorContent,
+                                                },
+                                            });
+                                            setEditorStatus('Draft updated.');
+                                        } catch (err) {
+                                            setEditorStatus(err.message || 'Failed to update draft.');
+                                        }
+                                    }}
+                                >
+                                    {__('Update draft', 'ai-gateway')}
+                                </button>
+                            )}
+                        </div>
+                        <div className="ai-studio-split-panel">
+                            <h3>{__('Preview', 'ai-gateway')}</h3>
+                            {previewUrl ? (
+                                <iframe title="Preview" className="ai-studio-iframe" src={previewUrl} />
+                            ) : (
+                                <div className="ai-studio-workspace-empty">{__('No preview yet.', 'ai-gateway')}</div>
+                            )}
+                        </div>
                     </div>
                 ) : workspaceMode === 'workflow' ? (
-                    <div className="ai-studio-workspace-empty">{__('Workflow editor (coming soon)', 'ai-gateway')}</div>
+                    <div className="ai-studio-workspace-panel">
+                        <div className="ai-studio-workflow-header">
+                            <h3>{__('Workflow builder', 'ai-gateway')}</h3>
+                            <div className="ai-studio-workflow-meta">
+                                <input
+                                    className="ai-studio-input"
+                                    value={workflowNote}
+                                    placeholder={__('Version note (optional)', 'ai-gateway')}
+                                    onChange={(event) => setWorkflowNote(event.target.value)}
+                                />
+                                <button
+                                    className="ai-studio-button secondary"
+                                    onClick={() => {
+                                        saveWorkflow(workflowNodes, { saveVersion: true, note: workflowNote });
+                                        setWorkflowNote('');
+                                    }}
+                                >
+                                    {__('Save version', 'ai-gateway')}
+                                </button>
+                            </div>
+                        </div>
+                        {workflowVersions.length > 0 && (
+                            <div className="ai-studio-workflow-versions">
+                                {workflowVersions.map((version, index) => (
+                                    <div key={index} className="ai-studio-workflow-version">
+                                        <div>
+                                            <div className="ai-studio-workflow-version-title">
+                                                {`Version ${workflowVersions.length - index}`}
+                                            </div>
+                                            <div className="ai-studio-workflow-version-meta">
+                                                {version.note || __('No note', 'ai-gateway')}
+                                                {' · '}
+                                                {version.saved_at ? new Date(version.saved_at).toLocaleString() : ''}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="ai-studio-button secondary tiny"
+                                            onClick={() => {
+                                                const restored = normalizeWorkflowNodes(version.workflow || []);
+                                                setWorkflowNodes(restored);
+                                                saveWorkflow(restored);
+                                            }}
+                                        >
+                                            {__('Restore', 'ai-gateway')}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <div
+                            className="ai-studio-workflow-canvas"
+                            style={{ width: workflowBounds.width, height: workflowBounds.height }}
+                        >
+                            <svg
+                                className="ai-studio-workflow-lines"
+                                width={workflowBounds.width}
+                                height={workflowBounds.height}
+                            >
+                                {workflowNodes.map((node, index) => {
+                                    const next = workflowNodes[index + 1];
+                                    if (!next) {
+                                        return null;
+                                    }
+                                    const startX = (node.x || 0) + WORKFLOW_NODE_WIDTH;
+                                    const startY = (node.y || 0) + WORKFLOW_NODE_HEIGHT / 2;
+                                    const endX = next.x || 0;
+                                    const endY = (next.y || 0) + WORKFLOW_NODE_HEIGHT / 2;
+                                    return (
+                                        <line
+                                            key={`${node.id}-line`}
+                                            x1={startX}
+                                            y1={startY}
+                                            x2={endX}
+                                            y2={endY}
+                                            stroke="#334155"
+                                            strokeWidth="2"
+                                        />
+                                    );
+                                })}
+                            </svg>
+                            {workflowNodes.map((node, index) => (
+                                <div
+                                    key={node.id}
+                                    className="ai-studio-workflow-node"
+                                    style={{ left: node.x, top: node.y, width: WORKFLOW_NODE_WIDTH }}
+                                >
+                                    <div
+                                        className="ai-studio-workflow-node-header"
+                                        onMouseDown={(event) => startNodeDrag(event, node)}
+                                    >
+                                        <span>{`#${index + 1} ${node.type}`}</span>
+                                        <div className="ai-studio-workflow-node-actions">
+                                            <button
+                                                className="ai-studio-button secondary tiny"
+                                                onClick={() => moveWorkflowNode(index, -1)}
+                                            >
+                                                {__('Up', 'ai-gateway')}
+                                            </button>
+                                            <button
+                                                className="ai-studio-button secondary tiny"
+                                                onClick={() => moveWorkflowNode(index, 1)}
+                                            >
+                                                {__('Down', 'ai-gateway')}
+                                            </button>
+                                            <button
+                                                className="ai-studio-button secondary tiny"
+                                                onClick={() => {
+                                                    const next = workflowNodes.filter((_, i) => i !== index);
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            >
+                                                {__('Remove', 'ai-gateway')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="ai-studio-workflow-node-body">
+                                        {node.type === 'run_agent' && (
+                                            <select
+                                                className="ai-studio-select"
+                                                value={node.agentId || ''}
+                                                onChange={(event) => {
+                                                    const next = [...workflowNodes];
+                                                    next[index] = { ...node, agentId: Number(event.target.value) };
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            >
+                                                <option value="">{__('Select agent', 'ai-gateway')}</option>
+                                                {agents.map((item) => (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                        {node.type === 'run_agent' && (
+                                            <textarea
+                                                className="ai-studio-textarea editor"
+                                                rows="3"
+                                                placeholder={__('Prompt (optional)', 'ai-gateway')}
+                                                value={node.prompt || ''}
+                                                onChange={(event) => {
+                                                    const next = [...workflowNodes];
+                                                    next[index] = { ...node, prompt: event.target.value };
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            />
+                                        )}
+                                        {(node.type === 'create_draft' || node.type === 'update_draft') && (
+                                            <select
+                                                className="ai-studio-select"
+                                                value={node.postType || 'article'}
+                                                onChange={(event) => {
+                                                    const next = [...workflowNodes];
+                                                    next[index] = { ...node, postType: event.target.value };
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            >
+                                                <option value="article">{__('Article', 'ai-gateway')}</option>
+                                                <option value="page">{__('Page', 'ai-gateway')}</option>
+                                            </select>
+                                        )}
+                                        {node.type === 'create_draft' && (
+                                            <input
+                                                className="ai-studio-input"
+                                                value={node.title || ''}
+                                                placeholder={__('Draft title', 'ai-gateway')}
+                                                onChange={(event) => {
+                                                    const next = [...workflowNodes];
+                                                    next[index] = { ...node, title: event.target.value };
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            />
+                                        )}
+                                        {node.type === 'update_draft' && (
+                                            <input
+                                                className="ai-studio-input"
+                                                value={node.postId || ''}
+                                                placeholder={__('Draft ID', 'ai-gateway')}
+                                                onChange={(event) => {
+                                                    const next = [...workflowNodes];
+                                                    next[index] = { ...node, postId: Number(event.target.value) };
+                                                    setWorkflowNodes(next);
+                                                    saveWorkflow(next);
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="ai-studio-workflow-actions">
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => addWorkflowNode({ type: 'run_agent', agentId: agentId || 0 })}
+                            >
+                                {__('Add Agent', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => addWorkflowNode({ type: 'create_draft', postType: 'article', title: '' })}
+                            >
+                                {__('Add Draft', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => addWorkflowNode({ type: 'update_draft', postType: 'article', postId: 0 })}
+                            >
+                                {__('Update Draft', 'ai-gateway')}
+                            </button>
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => addWorkflowNode({ type: 'insert_image' })}
+                            >
+                                {__('Insert Image', 'ai-gateway')}
+                            </button>
+                        </div>
+                        <button className="ai-studio-button" onClick={runWorkflow} disabled={isBusy}>
+                            {__('Run workflow', 'ai-gateway')}
+                        </button>
+                        {previewUrl && (
+                            <button
+                                className="ai-studio-button secondary"
+                                onClick={() => setWorkspaceMode('preview')}
+                            >
+                                {__('Open preview', 'ai-gateway')}
+                            </button>
+                        )}
+                        {workflowStatus && <div className="ai-studio-sidebar-empty">{workflowStatus}</div>}
+                    </div>
                 ) : workspaceMode === 'preview' ? (
-                    <div className="ai-studio-workspace-empty">{__('Preview panel (coming soon)', 'ai-gateway')}</div>
+                    <div className="ai-studio-workspace-panel preview">
+                        <h3>{__('Preview', 'ai-gateway')}</h3>
+                        {previewUrl ? (
+                            <iframe title="Preview" className="ai-studio-iframe" src={previewUrl} />
+                        ) : (
+                            <div className="ai-studio-workspace-empty">{__('No preview yet.', 'ai-gateway')}</div>
+                        )}
+                    </div>
                 ) : (
                     <div className="ai-studio-workspace-empty">{__('Workspace', 'ai-gateway')}</div>
                 )}
@@ -1047,7 +1808,7 @@ function StudioApp() {
                         <div className="ai-studio-modal-header">
                             <h3>{__('Settings', 'ai-gateway')}</h3>
                             <button className="ai-studio-icon-button" onClick={() => setShowSettingsModal(false)}>
-                                ✕
+                                X
                             </button>
                         </div>
                         <iframe
@@ -1095,3 +1856,9 @@ if (document.readyState === 'loading') {
 } else {
     mountApp();
 }
+
+
+
+
+
+
