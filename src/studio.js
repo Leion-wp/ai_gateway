@@ -87,6 +87,9 @@ function StudioApp() {
     const [editorTitle, setEditorTitle] = useState('');
     const [editorContent, setEditorContent] = useState('');
     const [editorStatus, setEditorStatus] = useState('');
+    const [injectMode, setInjectMode] = useState('append');
+    const [createType, setCreateType] = useState('article');
+    const [chatToolStatus, setChatToolStatus] = useState('');
     const [errorLogs, setErrorLogs] = useState([]);
     const [draftId, setDraftId] = useState(0);
     const [previewUrl, setPreviewUrl] = useState('');
@@ -141,6 +144,98 @@ function StudioApp() {
             defaults[field.key] = '';
         });
         setInputs(defaults);
+    };
+
+    const getConversationName = () => {
+        const current = conversations.find((item) => item.id === conversationId);
+        return current?.name || 'Draft';
+    };
+
+    const getLastChatContent = () => {
+        const lastAssistant = [...messages].reverse().find((msg) => msg.role === 'assistant');
+        if (lastAssistant?.content) {
+            return lastAssistant.content;
+        }
+        const lastUser = [...messages].reverse().find((msg) => msg.role === 'user');
+        if (lastUser?.content) {
+            return lastUser.content;
+        }
+        return instruction || '';
+    };
+
+    const createDraftFromContent = async (type, title, content) => {
+        const path = type === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
+        const data = await apiFetch({
+            path,
+            method: 'POST',
+            data: {
+                title: title || 'Draft',
+                content,
+                status: 'draft',
+            },
+        });
+        setDraftId(data?.id || 0);
+        if (data?.id) {
+            const named = `${title || 'Draft'} (ID: ${data.id})`;
+            await apiFetch({
+                path: `${path}/${data.id}`,
+                method: 'POST',
+                data: { title: named },
+            });
+            setPreviewUrl(
+                type === 'page'
+                    ? `${window.location.origin}/?page_id=${data.id}&preview=true`
+                    : `${window.location.origin}/?p=${data.id}&preview=true`
+            );
+        }
+        return data;
+    };
+
+    const injectChatToEditor = () => {
+        const content = getLastChatContent();
+        if (!content) {
+            logError('No chat content to inject.');
+            return;
+        }
+        const title = editorTitle || getConversationName();
+        let nextContent = '';
+        if (injectMode === 'replace') {
+            nextContent = content;
+        } else if (injectMode === 'section') {
+            nextContent = editorContent
+                ? `${editorContent}\n\n## ${title}\n\n${content}`
+                : `## ${title}\n\n${content}`;
+        } else {
+            nextContent = editorContent ? `${editorContent}\n\n${content}` : content;
+        }
+        setEditorTitle(title);
+        setEditorContent(nextContent);
+        setWorkspaceMode('editor');
+        setChatToolStatus('Injected into editor.');
+    };
+
+    const createDraftFromChat = async () => {
+        const content = getLastChatContent();
+        if (!content) {
+            logError('No chat content to create draft.');
+            return;
+        }
+        const title = editorTitle || getConversationName();
+        setChatToolStatus('');
+        setEditorStatus('');
+        setWorkspaceMode('editor');
+        setEditorType(createType);
+        setEditorTitle(title);
+        setEditorContent(content);
+        try {
+            const data = await createDraftFromContent(createType, title, content);
+            setEditorStatus(`Draft created: #${data.id}`);
+            setChatToolStatus(`Draft created: #${data.id}`);
+        } catch (err) {
+            const message = err.message || 'Failed to create draft.';
+            setEditorStatus(message);
+            setChatToolStatus(message);
+        }
     };
 
     useEffect(() => {
@@ -906,6 +1001,13 @@ function StudioApp() {
                     >
                         {__('Agents editor', 'ai-gateway')}
                     </button>
+                    <button
+                        type="button"
+                        className="ai-studio-button secondary"
+                        onClick={() => setWorkspaceMode('admin')}
+                    >
+                        {__('WP Admin', 'ai-gateway')}
+                    </button>
                 </div>
             </aside>
 
@@ -921,11 +1023,12 @@ function StudioApp() {
                         <div className="ai-studio-tabs">
                             {[
                             { id: 'chat', label: __('Chat', 'ai-gateway') },
-                            { id: 'editor', label: __('Editor', 'ai-gateway') },
-                            { id: 'split', label: __('Split', 'ai-gateway') },
-                            { id: 'workflow', label: __('Workflow', 'ai-gateway') },
+                                { id: 'editor', label: __('Editor', 'ai-gateway') },
+                                { id: 'split', label: __('Split', 'ai-gateway') },
+                                { id: 'workflow', label: __('Workflow', 'ai-gateway') },
                                 { id: 'preview', label: __('Preview', 'ai-gateway') },
                                 { id: 'agents', label: __('Agents', 'ai-gateway') },
+                                { id: 'admin', label: __('WP Admin', 'ai-gateway') },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -1046,6 +1149,37 @@ function StudioApp() {
                             {__('Use chain', 'ai-gateway')}
                         </label>
                     </div>
+                    <div className="ai-studio-chat-tools">
+                        <div className="ai-studio-sidebar-title">{__('Chat tools', 'ai-gateway')}</div>
+                        <div className="ai-studio-chat-tools-row">
+                            <select
+                                className="ai-studio-select"
+                                value={injectMode}
+                                onChange={(event) => setInjectMode(event.target.value)}
+                            >
+                                <option value="append">{__('Append to editor', 'ai-gateway')}</option>
+                                <option value="replace">{__('Replace editor', 'ai-gateway')}</option>
+                                <option value="section">{__('Add as section', 'ai-gateway')}</option>
+                            </select>
+                            <button className="ai-studio-button secondary" onClick={injectChatToEditor}>
+                                {__('Inject into editor', 'ai-gateway')}
+                            </button>
+                        </div>
+                        <div className="ai-studio-chat-tools-row">
+                            <select
+                                className="ai-studio-select"
+                                value={createType}
+                                onChange={(event) => setCreateType(event.target.value)}
+                            >
+                                <option value="article">{__('Create article', 'ai-gateway')}</option>
+                                <option value="page">{__('Create page', 'ai-gateway')}</option>
+                            </select>
+                            <button className="ai-studio-button" onClick={createDraftFromChat}>
+                                {__('Create from chat', 'ai-gateway')}
+                            </button>
+                        </div>
+                        {chatToolStatus && <div className="ai-studio-sidebar-empty">{chatToolStatus}</div>}
+                    </div>
                 </div>
             </main>
             <aside className="ai-studio-workspace">
@@ -1059,6 +1193,12 @@ function StudioApp() {
                         title="Agents"
                         className="ai-studio-iframe"
                         src={`${adminBase}admin.php?page=ai-gateway-agents&action=edit&agent_id=${agentId}&studio=1`}
+                    />
+                ) : workspaceMode === 'admin' ? (
+                    <iframe
+                        title="WP Admin"
+                        className="ai-studio-iframe"
+                        src={`${adminBase}admin.php`}
                     />
                 ) : workspaceMode === 'tools' ? (
                     <div className="ai-studio-workspace-empty">{__('Tools panel (coming soon)', 'ai-gateway')}</div>
@@ -1208,31 +1348,12 @@ function StudioApp() {
                             onClick={async () => {
                                 setEditorStatus('');
                                 try {
-                                    const path = editorType === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
-                                    const data = await apiFetch({
-                                        path,
-                                        method: 'POST',
-                                        data: {
-                                            title: editorTitle || 'Draft',
-                                            content: editorContent,
-                                            status: 'draft',
-                                        },
-                                    });
+                                    const data = await createDraftFromContent(
+                                        editorType,
+                                        editorTitle,
+                                        editorContent
+                                    );
                                     setEditorStatus(`Draft created: #${data.id}`);
-                                    setDraftId(data.id || 0);
-                                    if (data?.id) {
-                                        const title = `${editorTitle || 'Draft'} (ID: ${data.id})`;
-                                        await apiFetch({
-                                            path: `${path}/${data.id}`,
-                                            method: 'POST',
-                                            data: { title },
-                                        });
-                                        setPreviewUrl(
-                                            editorType === 'page'
-                                                ? `${window.location.origin}/?page_id=${data.id}&preview=true`
-                                                : `${window.location.origin}/?p=${data.id}&preview=true`
-                                        );
-                                    }
                                 } catch (err) {
                                     setEditorStatus(err.message || 'Failed to create draft.');
                                 }
@@ -1326,31 +1447,12 @@ function StudioApp() {
                                 onClick={async () => {
                                     setEditorStatus('');
                                     try {
-                                        const path = editorType === 'page' ? '/wp/v2/pages' : '/wp/v2/posts';
-                                        const data = await apiFetch({
-                                            path,
-                                            method: 'POST',
-                                            data: {
-                                                title: editorTitle || 'Draft',
-                                                content: editorContent,
-                                                status: 'draft',
-                                            },
-                                        });
+                                        const data = await createDraftFromContent(
+                                            editorType,
+                                            editorTitle,
+                                            editorContent
+                                        );
                                         setEditorStatus(`Draft created: #${data.id}`);
-                                        setDraftId(data.id || 0);
-                                        if (data?.id) {
-                                            const title = `${editorTitle || 'Draft'} (ID: ${data.id})`;
-                                            await apiFetch({
-                                                path: `${path}/${data.id}`,
-                                                method: 'POST',
-                                                data: { title },
-                                            });
-                                            setPreviewUrl(
-                                                editorType === 'page'
-                                                    ? `${window.location.origin}/?page_id=${data.id}&preview=true`
-                                                    : `${window.location.origin}/?p=${data.id}&preview=true`
-                                            );
-                                        }
                                     } catch (err) {
                                         setEditorStatus(err.message || 'Failed to create draft.');
                                     }
@@ -1856,9 +1958,3 @@ if (document.readyState === 'loading') {
 } else {
     mountApp();
 }
-
-
-
-
-
-
