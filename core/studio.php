@@ -58,6 +58,33 @@ function ai_gateway_is_studio_fullscreen() {
     return get_option('ai_gateway_studio_fullscreen', '1') === '1';
 }
 
+function ai_gateway_is_studio_embed_request() {
+    return is_admin() && !empty($_GET['studio']);
+}
+
+function ai_gateway_studio_admin_light_mode() {
+    if (!ai_gateway_is_studio_embed_request()) {
+        return;
+    }
+
+    echo '<style>
+        html, body, #wpwrap, #wpcontent, #wpbody, #wpbody-content {
+            background: #f8fafc !important;
+            color: #0f172a !important;
+        }
+        a { color: #2563eb !important; }
+        .wrap h1, .wrap h2, .wrap h3, .wrap h4, .wrap h5, .wrap h6 {
+            color: #0f172a !important;
+        }
+        .notice, .updated, .error, .update-nag {
+            color: #0f172a !important;
+            background: #ffffff !important;
+        }
+    </style>';
+}
+
+add_action('admin_head', 'ai_gateway_studio_admin_light_mode');
+
 function ai_gateway_require_studio_access() {
     if (!ai_gateway_is_studio_request()) {
         return;

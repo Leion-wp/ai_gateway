@@ -1531,7 +1531,7 @@ function StudioApp() {
                     <iframe
                         title="WP Admin"
                         className="ai-studio-iframe"
-                        src={`${adminBase}admin.php`}
+                        src={`${adminBase}admin.php?studio=1`}
                     />
                 ) : workspaceMode === 'tools' ? (
                     <div className="ai-studio-workspace-panel">
