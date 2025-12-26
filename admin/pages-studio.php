@@ -83,8 +83,8 @@ function ai_gateway_render_studio_admin_page() {
         .ai-studio-admin .ai-studio-workflow-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .ai-studio-admin .ai-studio-workflow-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .ai-studio-admin .ai-studio-workflow-versions { border: 1px dashed #2c313c; border-radius: 12px; padding: 10px; background: #0f1115; display: flex; flex-direction: column; gap: 8px; }
-        .ai-studio-admin .ai-studio-workflow-version { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .ai-studio-admin .ai-studio-workflow-version-title { font-size: 12px; font-weight: 600; }
+        .ai-studio-admin .ai-studio-workflow-version { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #e5e7eb; }
+        .ai-studio-admin .ai-studio-workflow-version-title { font-size: 12px; font-weight: 600; color: #e5e7eb; }
         .ai-studio-admin .ai-studio-workflow-version-meta { font-size: 11px; color: #9ca3af; }
         .ai-studio-admin .ai-studio-workflow-canvas { position: relative; border: 1px dashed #2c313c; border-radius: 12px; background: #0f1115; overflow: auto; }
         .ai-studio-admin .ai-studio-workflow-lines { position: absolute; top: 0; left: 0; pointer-events: none; }

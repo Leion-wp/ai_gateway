@@ -1559,9 +1559,11 @@ function StudioApp() {
                                 {pluginSearchResults.map((plugin) => (
                                     <div key={plugin.slug} className="ai-studio-workflow-version">
                                         <div>
-                                            <div className="ai-studio-workflow-version-title">{plugin.name}</div>
+                                            <div className="ai-studio-workflow-version-title">
+                                                {plugin.name || plugin.slug}
+                                            </div>
                                             <div className="ai-studio-workflow-version-meta">
-                                                {plugin.description}
+                                                {plugin.description || plugin.slug}
                                             </div>
                                         </div>
                                         <button
@@ -1582,7 +1584,9 @@ function StudioApp() {
                             {pluginList.map((plugin) => (
                                 <div key={plugin.file} className="ai-studio-workflow-version">
                                     <div>
-                                        <div className="ai-studio-workflow-version-title">{plugin.name}</div>
+                                        <div className="ai-studio-workflow-version-title">
+                                            {plugin.name || plugin.file}
+                                        </div>
                                         <div className="ai-studio-workflow-version-meta">
                                             {plugin.version} {plugin.active ? __('(active)', 'ai-gateway') : ''}
                                         </div>
